@@ -453,6 +453,7 @@ final class JournalStore {
 @Observable
 final class AudioStore {
     var isPlaying: Bool = false
+    var isPreparing: Bool = false
     var currentSessionID: String?
     var currentTime: Double = 0
     var duration: Double = 120
@@ -461,47 +462,56 @@ final class AudioStore {
 
     private var player: AVPlayer?
     private var periodicObserver: Any?
+    private var endObserver: NSObjectProtocol?
+    private var statusObservation: NSKeyValueObservation?
+    private var prepareTask: Task<Void, Never>?
+    private var pendingAutoPlay: Bool = false
+    private var deferredSeekTime: Double?
 
     func preload(session: Session) {
-        currentSessionID = session.id
-        duration = Double(session.duration * 60)
-        currentTime = 0
-        errorMessage = nil
-        isPlaying = false
-        teardownPlayer()
-
-        guard let url: URL = URL(string: normalizeDropboxURL(session.audioURL)) else {
-            return
-        }
-
-        let item = AVPlayerItem(url: url)
-        let player = AVPlayer(playerItem: item)
-        player.volume = Float(volume)
-        installObserver(on: player)
-        self.player = player
+        prepare(session: session, autoplay: false)
     }
 
     func play(session: Session) {
-        if currentSessionID != session.id || player == nil {
-            preload(session: session)
+        if currentSessionID == session.id, isPreparing {
+            pendingAutoPlay = true
+            return
         }
-        isPlaying = true
-        player?.play()
+
+        if currentSessionID == session.id, let player {
+            errorMessage = nil
+            if currentTime >= max(duration - 0.5, 1) {
+                seek(to: 0)
+            }
+            isPlaying = true
+            player.play()
+            return
+        }
+
+        prepare(session: session, autoplay: true)
     }
 
     func pause() {
+        pendingAutoPlay = false
         isPlaying = false
         player?.pause()
     }
 
     func stop() {
+        prepareTask?.cancel()
+        prepareTask = nil
+        pendingAutoPlay = false
+        deferredSeekTime = nil
+        isPreparing = false
         isPlaying = false
+        currentSessionID = nil
         currentTime = 0
         teardownPlayer()
     }
 
     func seek(to seconds: Double) {
         currentTime = min(max(0, seconds), duration)
+        deferredSeekTime = currentTime
         let time = CMTime(seconds: currentTime, preferredTimescale: 600)
         player?.seek(to: time)
     }
@@ -515,11 +525,167 @@ final class AudioStore {
         player?.volume = Float(value)
     }
 
-    func normalizeDropboxURL(_ raw: String) -> String {
-        raw.replacingOccurrences(of: "?dl=0", with: "?raw=1")
+    private func prepare(session: Session, autoplay: Bool) {
+        if currentSessionID == session.id, isPreparing {
+            pendingAutoPlay = pendingAutoPlay || autoplay
+            return
+        }
+
+        prepareTask?.cancel()
+        teardownPlayer()
+
+        currentSessionID = session.id
+        duration = Double(session.duration * 60)
+        currentTime = 0
+        errorMessage = nil
+        isPlaying = false
+        isPreparing = true
+        pendingAutoPlay = autoplay
+        deferredSeekTime = nil
+
+        let rawURLString: String = Self.playbackURLString(for: session)
+        prepareTask = Task { [session] in
+            do {
+                let localURL: URL = try await Self.cachedAudioURL(for: session, rawURLString: rawURLString)
+                try Task.checkCancellation()
+                await MainActor.run {
+                    guard self.currentSessionID == session.id else {
+                        self.prepareTask = nil
+                        return
+                    }
+                    self.activateAudioSession()
+                    self.configurePlayer(with: localURL, for: session.id)
+                    self.isPreparing = false
+                    if self.pendingAutoPlay {
+                        self.player?.play()
+                        self.isPlaying = true
+                    }
+                    self.prepareTask = nil
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    if self.currentSessionID == session.id {
+                        self.isPreparing = false
+                    }
+                    self.prepareTask = nil
+                }
+            } catch {
+                await MainActor.run {
+                    guard self.currentSessionID == session.id else {
+                        self.prepareTask = nil
+                        return
+                    }
+                    self.errorMessage = "We couldn't load this session audio."
+                    self.isPreparing = false
+                    self.isPlaying = false
+                    self.prepareTask = nil
+                }
+            }
+        }
+    }
+
+    private func activateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            errorMessage = "We couldn't start audio playback."
+        }
+    }
+
+    private func configurePlayer(with localURL: URL, for sessionID: String) {
+        let item = AVPlayerItem(url: localURL)
+        let player = AVPlayer(playerItem: item)
+        player.volume = Float(volume)
+        player.automaticallyWaitsToMinimizeStalling = false
+        installObserver(on: player, sessionID: sessionID)
+        self.player = player
+
+        if let deferredSeekTime {
+            let time = CMTime(seconds: deferredSeekTime, preferredTimescale: 600)
+            player.seek(to: time)
+            self.currentTime = deferredSeekTime
+        }
+    }
+
+    nonisolated private static func playbackURLString(for session: Session) -> String {
+        session.audioSources.first?.url ?? session.audioURL
+    }
+
+    nonisolated private static func normalizedAudioURL(from raw: String) -> URL? {
+        guard var components: URLComponents = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return nil
+        }
+
+        let isDropboxHost: Bool = components.host == "www.dropbox.com" || components.host == "dropbox.com" || components.host == "dl.dropboxusercontent.com"
+        if components.host == "www.dropbox.com" || components.host == "dropbox.com" {
+            components.host = "dl.dropboxusercontent.com"
+        }
+
+        if isDropboxHost {
+            let filteredItems: [URLQueryItem] = (components.queryItems ?? []).filter { item in
+                item.name.caseInsensitiveCompare("dl") != .orderedSame && item.name.caseInsensitiveCompare("raw") != .orderedSame
+            }
+            components.queryItems = filteredItems + [URLQueryItem(name: "raw", value: "1")]
+        }
+
+        return components.url
+    }
+
+    nonisolated private static func cachedAudioURL(for session: Session, rawURLString: String) async throws -> URL {
+        guard let remoteURL: URL = normalizedAudioURL(from: rawURLString) else {
+            throw URLError(.badURL)
+        }
+
+        let cacheDirectory: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("SessionAudio", isDirectory: true)
+        try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+
+        let cacheURL: URL = cacheDirectory.appendingPathComponent("\(safeCacheName(from: session.id)).\(cacheFileExtension(for: session, remoteURL: remoteURL))")
+        if let attributes: [FileAttributeKey: Any] = try? FileManager.default.attributesOfItem(atPath: cacheURL.path), let fileSize: NSNumber = attributes[.size] as? NSNumber, fileSize.intValue > 0 {
+            return cacheURL
+        }
+
+        let (temporaryURL, response): (URL, URLResponse) = try await URLSession.shared.download(from: remoteURL)
+        if let httpResponse: HTTPURLResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+            throw URLError(.badServerResponse)
+        }
+
+        try? FileManager.default.removeItem(at: cacheURL)
+        try FileManager.default.moveItem(at: temporaryURL, to: cacheURL)
+        return cacheURL
+    }
+
+    nonisolated private static func safeCacheName(from value: String) -> String {
+        let sanitized: String = value.unicodeScalars.map { scalar in
+            CharacterSet.alphanumerics.contains(scalar) ? String(Character(scalar)) : "-"
+        }.joined()
+        return sanitized.isEmpty ? "session-audio" : sanitized
+    }
+
+    nonisolated private static func cacheFileExtension(for session: Session, remoteURL: URL) -> String {
+        if !remoteURL.pathExtension.isEmpty {
+            return remoteURL.pathExtension
+        }
+
+        switch session.audioSources.first?.mimeType {
+        case "audio/wav":
+            return "wav"
+        case "audio/mpeg":
+            return "mp3"
+        case "audio/mp4":
+            return "m4a"
+        default:
+            return "m4a"
+        }
     }
 
     private func teardownPlayer() {
+        statusObservation = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
         if let periodicObserver, let player {
             player.removeTimeObserver(periodicObserver)
             self.periodicObserver = nil
@@ -528,11 +694,12 @@ final class AudioStore {
         self.player = nil
     }
 
-    private func installObserver(on player: AVPlayer) {
+    private func installObserver(on player: AVPlayer, sessionID: String) {
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         periodicObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self else { return }
             Task { @MainActor in
+                guard self.currentSessionID == sessionID else { return }
                 self.currentTime = time.seconds.isFinite ? time.seconds : 0
                 if let itemDuration = player.currentItem?.duration.seconds, itemDuration.isFinite, itemDuration > 0 {
                     self.duration = itemDuration
@@ -540,6 +707,34 @@ final class AudioStore {
                 if self.currentTime >= max(self.duration - 0.75, 1), self.isPlaying {
                     self.isPlaying = false
                 }
+            }
+        }
+
+        statusObservation = player.currentItem?.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard let self else { return }
+            Task { @MainActor in
+                guard self.currentSessionID == sessionID else { return }
+                switch item.status {
+                case .failed:
+                    self.errorMessage = item.error?.localizedDescription ?? "We couldn't play this audio."
+                    self.isPreparing = false
+                    self.isPlaying = false
+                case .readyToPlay:
+                    self.errorMessage = nil
+                case .unknown:
+                    break
+                @unknown default:
+                    break
+                }
+            }
+        }
+
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: player.currentItem, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                guard self.currentSessionID == sessionID else { return }
+                self.currentTime = self.duration
+                self.isPlaying = false
             }
         }
     }
@@ -616,31 +811,31 @@ final class VibroacousticStore {
 }
 
 private let harmoniaStates: [EmotionalState] = [
-    EmotionalState(id: "anxious", label: "Anxious", gradientHex: ["#14213D", "#4AA3FF"], geometry: "anxious"),
-    EmotionalState(id: "stressed", label: "Stressed", gradientHex: ["#0B1022", "#1FD6C1"], geometry: "stressed"),
-    EmotionalState(id: "sad", label: "Sad", gradientHex: ["#1A1C38", "#6E7FF3"], geometry: "sad"),
-    EmotionalState(id: "angry", label: "Angry", gradientHex: ["#35111D", "#FF5A7A"], geometry: "angry"),
-    EmotionalState(id: "calm", label: "Calm", gradientHex: ["#0C1A24", "#1FD6C1"], geometry: "calm"),
-    EmotionalState(id: "happy", label: "Happy", gradientHex: ["#342112", "#F8C46C"], geometry: "happy"),
-    EmotionalState(id: "inspired", label: "Inspired", gradientHex: ["#291737", "#8836E2"], geometry: "inspired"),
-    EmotionalState(id: "energized", label: "Energized", gradientHex: ["#112534", "#1FD6C1"], geometry: "energized")
+    EmotionalState(id: "anxious", label: "Anxious", gradientHex: ["#FF6B6B", "#C44569"], geometry: "anxious"),
+    EmotionalState(id: "stressed", label: "Stressed", gradientHex: ["#F7971E", "#FFD200"], geometry: "stressed"),
+    EmotionalState(id: "sad", label: "Sad", gradientHex: ["#667eea", "#764ba2"], geometry: "sad"),
+    EmotionalState(id: "angry", label: "Angry", gradientHex: ["#f093fb", "#f5576c"], geometry: "angry"),
+    EmotionalState(id: "calm", label: "Calm", gradientHex: ["#4facfe", "#00f2fe"], geometry: "calm"),
+    EmotionalState(id: "happy", label: "Happy", gradientHex: ["#FFD700", "#fee140"], geometry: "happy"),
+    EmotionalState(id: "inspired", label: "Inspired", gradientHex: ["#43e97b", "#38f9d7"], geometry: "inspired"),
+    EmotionalState(id: "energized", label: "Energized", gradientHex: ["#30cfd0", "#330867"], geometry: "energized")
 ]
 
 private let harmoniaSessions: [Session] = [
-    Session(id: "welcome-intro", title: "Welcome / Intro Session", description: "Start here: a gentle introduction to Harmonia with a locked 12Hz binaural beat", duration: 2, frequency: "12Hz", gradientHex: ["#37D6EC", "#19B39F"], targetEmotions: ["anxious", "stressed", "calm"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3", audioSources: [], tempoBPM: 60),
-    Session(id: "dissolution-anxiousness", title: "Quiet the Alarm", description: "Soften urgency and return to inner spaciousness.", duration: 9, frequency: "432 Hz", gradientHex: ["#0B1022", "#4AA3FF"], targetEmotions: ["anxious", "stressed"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3", audioSources: [], tempoBPM: 62),
-    Session(id: "stress-release-flow", title: "Unwind the Mind", description: "Downshift from pressure into steadier rhythm.", duration: 11, frequency: "174 Hz", gradientHex: ["#0C1A24", "#1FD6C1"], targetEmotions: ["stressed", "angry"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3", audioSources: [], tempoBPM: 64),
-    Session(id: "lifting-from-sadness", title: "Lifting from Sadness", description: "A synchronized lift toward warmth and motion.", duration: 12, frequency: "396 Hz", gradientHex: ["#1A1C38", "#6E7FF3"], targetEmotions: ["sad"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3", audioSources: [], tempoBPM: 58),
-    Session(id: "alpha-waves", title: "Cooling the Edge", description: "Cool the nervous system and widen your view.", duration: 10, frequency: "10 Hz Alpha", gradientHex: ["#0B1022", "#1FD6C1"], targetEmotions: ["angry", "stressed"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3", audioSources: [], tempoBPM: 65),
-    Session(id: "how-to-deepen-calm", title: "How to Deepen Calm", description: "A spoken sonic guide into grounded stillness.", duration: 8, frequency: "Theta Blend", gradientHex: ["#122030", "#4AA3FF"], targetEmotions: ["calm"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3", audioSources: [], tempoBPM: 54),
-    Session(id: "741hz-detox", title: "Turn up the light", description: "Clear static and invite cleaner emotional space.", duration: 8, frequency: "741 Hz", gradientHex: ["#2F230C", "#F8C46C"], targetEmotions: ["inspired", "happy"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3", audioSources: [], tempoBPM: 68),
-    Session(id: "theta-healing", title: "Settle the System", description: "Melt into a slower wave and let the body unclench.", duration: 14, frequency: "Theta 6 Hz", gradientHex: ["#1A245A", "#148C94"], targetEmotions: ["anxious", "sad", "calm"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3", audioSources: [], tempoBPM: 56),
-    Session(id: "396hz-release", title: "Set the Field", description: "Release charge and re-enter the room of yourself.", duration: 9, frequency: "396 Hz", gradientHex: ["#211323", "#8836E2"], targetEmotions: ["sad", "angry"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3", audioSources: [], tempoBPM: 60),
-    Session(id: "delta-sleep", title: "Held in Stillness", description: "A night-facing drift into depth and safety.", duration: 20, frequency: "Delta 2 Hz", gradientHex: ["#070A12", "#4AA3FF"], targetEmotions: ["anxious", "sad", "calm"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3", audioSources: [], tempoBPM: 48),
-    Session(id: "gamma-insight", title: "Acceptance Flow", description: "A luminous channel toward insight and steadiness.", duration: 13, frequency: "40 Hz Gamma", gradientHex: ["#16202E", "#F8C46C"], targetEmotions: ["inspired", "energized", "happy"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-11.mp3", audioSources: [], tempoBPM: 72),
-    Session(id: "528hz-love", title: "Open to what is", description: "A heart-opening field for gentler self-contact.", duration: 10, frequency: "528 Hz", gradientHex: ["#102922", "#1FD6C1"], targetEmotions: ["calm", "happy"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-12.mp3", audioSources: [], tempoBPM: 64),
-    Session(id: "how-to-spark-inspiration", title: "How to Spark Inspiration", description: "Invite fresh language, movement, and courage.", duration: 7, frequency: "852 Hz", gradientHex: ["#291737", "#8836E2"], targetEmotions: ["inspired"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-13.mp3", audioSources: [], tempoBPM: 74),
-    Session(id: "dynamic-energy-flow", title: "Dynamic Energy Flow", description: "Build clean momentum without losing inner coherence.", duration: 9, frequency: "18 Hz", gradientHex: ["#10303A", "#1FD6C1"], targetEmotions: ["energized", "happy"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-14.mp3", audioSources: [], tempoBPM: 88)
+    Session(id: "welcome-intro", title: "Welcome / Intro Session", description: "Start here: a gentle introduction to Harmonia with a locked 12Hz binaural beat", duration: 5, frequency: "12", gradientHex: ["#22d3ee", "#14b8a6"], targetEmotions: ["happy"], audioURL: "https://dl.dropboxusercontent.com/scl/fi/9rz7p1lrbn4rmh38i9f4u/Intro-song-session.m4a?rlkey=qb5qsvhfnpsfo9ylh1p1fd3st&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "dissolution-anxiousness", title: "Quiet the Alarm", description: "A grounding soundscape that helps the nervous system stand down from false urgency. Supports a natural return to calm without trying to fix or change how you feel.", duration: 5, frequency: "6", gradientHex: ["#FF6B6B", "#C44569"], targetEmotions: ["anxious"], audioURL: "https://dl.dropboxusercontent.com/scl/fi/e9max0h2wo9kdbqmv8ywn/quiet_the_alarm_MUSICAL.wav?rlkey=vngdzykacdgl7fxbt1wf1uvnh&raw=1", audioSources: [SessionAudioSource(url: "https://dl.dropboxusercontent.com/scl/fi/e9max0h2wo9kdbqmv8ywn/quiet_the_alarm_MUSICAL.wav?rlkey=vngdzykacdgl7fxbt1wf1uvnh&raw=1", mimeType: "audio/wav")], tempoBPM: nil),
+    Session(id: "stress-release-flow", title: "Unwind the Mind", description: "Release accumulated stress and tension with 4hz theta waves", duration: 5, frequency: "4", gradientHex: ["#F7971E", "#FFD200"], targetEmotions: ["stressed"], audioURL: "https://www.dropbox.com/scl/fi/kun5eqxx32y0yjdhxic8y/stress-release-flow.m4a?rlkey=gji6tz7k5x0a4pf0f97rlqn2y&st=4rtrw3db&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "lifting-from-sadness", title: "Lifting from Sadness", description: "Gently lift your spirit from sadness with 7hz theta waves", duration: 5, frequency: "7", gradientHex: ["#6E45E2", "#EABF87", "#6E45E2"], targetEmotions: ["sad"], audioURL: "https://dl.dropboxusercontent.com/scl/fi/twhg5dyya6z47mmytia9n/lift-from-sadness.m4a?rlkey=js6t5o6vi6k62ysgl5ka9cvwg&st=jht8u6e6&raw=1", audioSources: [], tempoBPM: 72),
+    Session(id: "alpha-waves", title: "Cooling the Edge", description: "10 Hz (alpha)\nA steady sound designed to support calm awareness and emotional regulation", duration: 5, frequency: "10", gradientHex: ["#f093fb", "#f5576c"], targetEmotions: ["angry"], audioURL: "https://www.dropbox.com/scl/fi/ebc3zc6r7mb6wgpzngx2f/417hz-frequency-ambient-music-meditationcalmingzenspiritual-music-293573.mp3?rlkey=02nplpdtem9xpvmgqqoy815m9&raw=1", audioSources: [SessionAudioSource(url: "https://www.dropbox.com/scl/fi/ebc3zc6r7mb6wgpzngx2f/417hz-frequency-ambient-music-meditationcalmingzenspiritual-music-293573.mp3?rlkey=02nplpdtem9xpvmgqqoy815m9&raw=1", mimeType: "audio/mpeg")], tempoBPM: nil),
+    Session(id: "how-to-deepen-calm", title: "How to Deepen Calm", description: "Deepen your natural calm state with 8Hz alpha waves", duration: 5, frequency: "8", gradientHex: ["#3BA9F9", "#10E7F5"], targetEmotions: ["calm"], audioURL: "https://www.dropbox.com/scl/fi/yfyfft88c7hjk52blrdbo/calm.m4a?rlkey=opgjbkvpm82uhhoh3xnkcdaab&st=jnbfosir&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "741hz-detox", title: "Turn up the light", description: "~10–14 Hz\n\nA bright, energizing soundscape designed to lift your mood and amplify what you're already feeling. Turn Up the Light supports clarity, optimism, and forward momentum without overstimulation or crash. Perfect for afternoons when you want to feel more alive, open, and energized — no coffee required.", duration: 5, frequency: "10–14", gradientHex: ["#FFD700", "#fee140"], targetEmotions: ["happy"], audioURL: "https://dl.dropboxusercontent.com/scl/fi/cd6omjnv2lxdpgk5egelr/Turn_Up_the_Light.now.wav?rlkey=pqkjwkj14zvuo8f38i9abjmdl&raw=1", audioSources: [SessionAudioSource(url: "https://dl.dropboxusercontent.com/scl/fi/cd6omjnv2lxdpgk5egelr/Turn_Up_the_Light.now.wav?rlkey=pqkjwkj14zvuo8f38i9abjmdl&raw=1", mimeType: "audio/wav")], tempoBPM: nil),
+    Session(id: "theta-healing", title: "Settle the System", description: "6 Hz (theta)\nA calming soundscape that helps settle the nervous system and soften internal noise, supporting a sense of safety and calm", duration: 5, frequency: "6", gradientHex: ["#f093fb", "#f5576c"], targetEmotions: ["anxious"], audioURL: "https://www.dropbox.com/scl/fi/oihtlwsfke8gc6r55o59n/Settle-The-system.m4a?rlkey=nl1aaczxywdru01pc8c0azgxs&st=lcc00rgi&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "396hz-release", title: "Set the Field", description: "396 Hz\nA grounding sound designed to support steadiness, orientation, and balance. Ideal for mornings, intention-setting, or anytime you want to begin from a centered state.", duration: 5, frequency: "396", gradientHex: ["#a1c4fd", "#c2e9fb"], targetEmotions: ["stressed"], audioURL: "https://www.dropbox.com/scl/fi/qi63twky8rmu0oqyxvwjt/Set-the-Field.m4a?rlkey=0u6f4yumsqf7qu9hmcxuv9h3f&st=fvsiuc2m&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "delta-sleep", title: "Held in Stillness", description: "2 Hz (delta)\nA slow, resting sound designed for moments that call for gentleness, pause, and deep stillness.", duration: 5, frequency: "2", gradientHex: ["#a8edea", "#fed6e3"], targetEmotions: ["sad"], audioURL: "https://www.dropbox.com/scl/fi/0t7y1hm45dsmv1p2jzxuj/held_in_stillness_v3.wav?rlkey=31drmwnxlb00hmn0j50v8y687&st=wqjivev8&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "gamma-insight", title: "Acceptance Flow", description: "Flow into acceptance and understanding with 40Hz gamma waves", duration: 5, frequency: "40", gradientHex: ["#ffecd2", "#fcb69f"], targetEmotions: ["calm"], audioURL: "https://www.dropbox.com/scl/fi/3ch5a5mj34wm7b7ivmyvs/Acceptance.m4a?rlkey=29ahqjxles1tdzphtm8773rxd&raw=1", audioSources: [SessionAudioSource(url: "https://www.dropbox.com/scl/fi/3ch5a5mj34wm7b7ivmyvs/Acceptance.m4a?rlkey=29ahqjxles1tdzphtm8773rxd&raw=1", mimeType: "audio/mp4")], tempoBPM: nil),
+    Session(id: "528hz-love", title: "Open to what is", description: "A gentle, expansive soundscape for welcoming whatever the day brings.\n\nOpen to What Is supports openness, optimism, and trust in the unfolding. Perfect for mornings or moments of transition when you want to feel receptive, steady, and ready — without pressure or expectation", duration: 5, frequency: "528", gradientHex: ["#ff9a9e", "#fecfef"], targetEmotions: ["happy"], audioURL: "https://www.dropbox.com/scl/fi/1fwptryklytennie192vf/open-to-what-is.m4a?rlkey=noszhcbeoxgb6649zb9gb7wev&st=usvdarsw&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "how-to-spark-inspiration", title: "How to Spark Inspiration", description: "Ignite creative inspiration with 15Hz beta waves", duration: 12, frequency: "15", gradientHex: ["#43e97b", "#38f9d7"], targetEmotions: ["inspired"], audioURL: "https://www.dropbox.com/scl/fi/4a099vrxfaceqfebrula1/how-to-spark-inspiration.m4a?rlkey=cet2l1ybe33896fj5zaxqmn7t&raw=1", audioSources: [], tempoBPM: nil),
+    Session(id: "dynamic-energy-flow", title: "Dynamic Energy Flow", description: "Create dynamic energy flow with 18Hz beta waves", duration: 18, frequency: "18", gradientHex: ["#30cfd0", "#330867"], targetEmotions: ["energized"], audioURL: "https://www.dropbox.com/scl/fi/ukpy7m229p8fbifyonirr/dynamic-energy-V5-2.m4a?rlkey=xqqkbtmbyvqpybe9qtqfu7tiy&st=1h2sixq5&raw=1", audioSources: [SessionAudioSource(url: "https://www.dropbox.com/scl/fi/ukpy7m229p8fbifyonirr/dynamic-energy-V5-2.m4a?rlkey=xqqkbtmbyvqpybe9qtqfu7tiy&st=1h2sixq5&raw=1", mimeType: "audio/mp4")], tempoBPM: nil)
 ]
 
 private let harmoniaSessionAliases: [String: String] = [
@@ -1689,7 +1884,7 @@ struct SessionPlayerView: View {
                 }
                 .testID("seek-back-button")
 
-                SessionPlayPauseButton(isPlaying: audioStore.isPlaying) {
+                SessionPlayPauseButton(isPlaying: audioStore.isPlaying, isDisabled: audioStore.isPreparing) {
                     togglePlayback(for: session)
                 }
                 .testID("play-pause-button")
@@ -2138,30 +2333,39 @@ struct PlayerTransportButton: View {
 
 struct SessionPlayPauseButton: View {
     let isPlaying: Bool
+    let isDisabled: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(.white)
-                .offset(x: isPlaying ? 0 : 2)
-                .frame(width: 88, height: 88)
-                .background(
-                    LinearGradient(
-                        colors: [.white.opacity(0.30), .white.opacity(0.12)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: .circle
-                )
-                .overlay {
-                    Circle()
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+            ZStack {
+                if isDisabled {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(.white)
+                        .offset(x: isPlaying ? 0 : 2)
                 }
+            }
+            .frame(width: 88, height: 88)
+            .background(
+                LinearGradient(
+                    colors: [.white.opacity(0.30), .white.opacity(0.12)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: .circle
+            )
+            .overlay {
+                Circle()
+                    .strokeBorder(.white.opacity(0.18), lineWidth: 1)
+            }
         }
         .buttonStyle(HarmoniaScaleButtonStyle())
-        .accessibilityLabel(isPlaying ? "Pause" : "Play")
+        .disabled(isDisabled)
+        .accessibilityLabel(isDisabled ? "Preparing audio" : (isPlaying ? "Pause" : "Play"))
     }
 }
 
