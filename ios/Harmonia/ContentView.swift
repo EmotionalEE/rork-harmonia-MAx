@@ -467,14 +467,18 @@ final class AudioStore {
         duration = Double(session.duration * 60)
         currentTime = 0
         errorMessage = nil
+        isPlaying = false
+        teardownPlayer()
+
         guard let url: URL = URL(string: normalizeDropboxURL(session.audioURL)) else {
             return
         }
+
         let item = AVPlayerItem(url: url)
         let player = AVPlayer(playerItem: item)
         player.volume = Float(volume)
-        self.player = player
         installObserver(on: player)
+        self.player = player
     }
 
     func play(session: Session) {
@@ -492,9 +496,8 @@ final class AudioStore {
 
     func stop() {
         isPlaying = false
-        player?.pause()
-        player?.seek(to: .zero)
         currentTime = 0
+        teardownPlayer()
     }
 
     func seek(to seconds: Double) {
@@ -516,11 +519,16 @@ final class AudioStore {
         raw.replacingOccurrences(of: "?dl=0", with: "?raw=1")
     }
 
-    private func installObserver(on player: AVPlayer) {
-        if let periodicObserver, let oldPlayer = self.player {
-            oldPlayer.removeTimeObserver(periodicObserver)
+    private func teardownPlayer() {
+        if let periodicObserver, let player {
+            player.removeTimeObserver(periodicObserver)
             self.periodicObserver = nil
         }
+        self.player?.pause()
+        self.player = nil
+    }
+
+    private func installObserver(on player: AVPlayer) {
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         periodicObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self else { return }
@@ -3310,7 +3318,7 @@ struct UnwindGeometryView: View, Equatable {
     var body: some View {
         GeometryReader { proxy in
             let layout = SessionGeometryLayout(size: proxy.size)
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SessionGeometryValues.standard(
                         date: timeline.date,
@@ -3340,7 +3348,7 @@ struct QuietAlarmGeometryView: View, Equatable {
     var body: some View {
         GeometryReader { proxy in
             let layout = SessionGeometryLayout(size: proxy.size)
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SessionGeometryValues.quietAlarm(
                         date: timeline.date,
@@ -3368,7 +3376,7 @@ struct SacredGeometryView: View, Equatable {
     var body: some View {
         GeometryReader { proxy in
             let layout = SessionGeometryLayout(size: proxy.size)
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SessionGeometryValues.standard(
                         date: timeline.date,
@@ -3400,7 +3408,7 @@ struct SynchroGeometryView: View, Equatable {
             let side: CGFloat = min(proxy.size.width, proxy.size.height) * 0.9
             let origin: CGPoint = CGPoint(x: (proxy.size.width - side) / 2, y: max(proxy.size.height * 0.15, (proxy.size.height - side) / 2))
             let frame: CGRect = CGRect(origin: origin, size: CGSize(width: side, height: side))
-            TimelineView(.animation) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SynchroGeometryValues(
                         date: timeline.date,
