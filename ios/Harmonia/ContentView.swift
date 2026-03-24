@@ -635,6 +635,34 @@ private let harmoniaSessions: [Session] = [
     Session(id: "dynamic-energy-flow", title: "Dynamic Energy Flow", description: "Build clean momentum without losing inner coherence.", duration: 9, frequency: "18 Hz", gradientHex: ["#10303A", "#1FD6C1"], targetEmotions: ["energized", "happy"], audioURL: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-14.mp3", audioSources: [], tempoBPM: 88)
 ]
 
+private let harmoniaSessionAliases: [String: String] = [
+    "quiet-the-alarm": "dissolution-anxiousness",
+    "quiet the alarm": "dissolution-anxiousness",
+    "unwind-the-mind": "stress-release-flow",
+    "unwind the mind": "stress-release-flow",
+    "lifting-from-sadness": "lifting-from-sadness",
+    "lifting from sadness": "lifting-from-sadness"
+]
+
+private func normalizedSessionLookupKey(_ value: String) -> String {
+    let folded: String = value
+        .folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: .current)
+        .lowercased()
+    let components: [String] = folded.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+    return components.joined(separator: "-")
+}
+
+private func resolveSession(id rawValue: String) -> Session? {
+    let normalizedValue: String = normalizedSessionLookupKey(rawValue)
+    let canonicalID: String = harmoniaSessionAliases[normalizedValue] ?? normalizedValue
+
+    return harmoniaSessions.first { session in
+        let sessionID: String = normalizedSessionLookupKey(session.id)
+        let sessionTitle: String = normalizedSessionLookupKey(session.title)
+        return sessionID == canonicalID || sessionTitle == canonicalID
+    }
+}
+
 struct ContentView: View {
     @Environment(AuthStore.self) private var authStore
     @Environment(UserProgressStore.self) private var progressStore
@@ -1510,7 +1538,7 @@ struct SessionPlayerView: View {
     @State private var hasCompletedPlayback: Bool = false
 
     private var session: Session? {
-        harmoniaSessions.first(where: { $0.id == sessionID })
+        resolveSession(id: sessionID)
     }
 
     private var playbackRange: ClosedRange<Double> {
@@ -2391,7 +2419,7 @@ struct EndReflectionView: View {
     @State private var savedEntry: ReflectionEntry?
 
     private var session: Session? {
-        harmoniaSessions.first(where: { $0.id == sessionID })
+        resolveSession(id: sessionID)
     }
 
     var body: some View {
