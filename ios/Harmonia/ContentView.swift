@@ -1549,16 +1549,16 @@ struct SessionPlayerView: View {
         resolveSession(id: sessionID)
     }
 
-    private var playbackRange: ClosedRange<Double> {
-        0...max(audioStore.duration, 1)
-    }
-
     private var isBinauralActive: Bool {
         vibroStore.isVibroacousticActive && vibroStore.currentPattern == "binaural"
     }
 
     private var isIsochronicActive: Bool {
         vibroStore.isVibroacousticActive && vibroStore.currentPattern == "isochronic"
+    }
+
+    private var heroAnchorID: String {
+        "session-hero-\(sessionID)"
     }
 
     var body: some View {
@@ -1581,20 +1581,41 @@ struct SessionPlayerView: View {
     }
 
     private func sessionBody(session: Session) -> some View {
-        ZStack(alignment: .topTrailing) {
-            LinearGradient(colors: session.colors + [Color(hex: "#070A12")], startPoint: .topLeading, endPoint: .bottomTrailing)
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .topTrailing) {
+                LinearGradient(colors: session.colors + [Color(hex: "#070A12")], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
 
-            SessionGeometryHost(session: session, isAnimating: audioStore.isPlaying)
-                .ignoresSafeArea()
+                SessionGeometryHost(session: session, isAnimating: audioStore.isPlaying)
+                    .ignoresSafeArea()
 
-            exitButton
-                .padding(.top, 22)
-                .padding(.trailing, 20)
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Color.clear
+                                .frame(height: proxy.size.height)
+                                .overlay(alignment: .bottom) {
+                                    Color.clear
+                                        .frame(height: 1)
+                                        .id(heroAnchorID)
+                                }
 
-            VStack(spacing: 0) {
-                Spacer(minLength: 230)
-                sessionSheet(session: session)
+                            sessionSheet(session: session)
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, max(24, proxy.safeAreaInsets.bottom + 8))
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                    .onAppear {
+                        DispatchQueue.main.async {
+                            scrollProxy.scrollTo(heroAnchorID, anchor: .bottom)
+                        }
+                    }
+                }
+
+                exitButton
+                    .padding(.top, proxy.safeAreaInsets.top + 6)
+                    .padding(.trailing, 16)
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -1615,7 +1636,7 @@ struct SessionPlayerView: View {
                 completeSession(session)
             }
         }
-        .alert("Are you sure you want to end this session?", isPresented: $showExitConfirmation) {
+        .alert("End Session?", isPresented: $showExitConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("End Session", role: .destructive) {
                 endSession()
@@ -1626,125 +1647,103 @@ struct SessionPlayerView: View {
     }
 
     private func sessionSheet(session: Session) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    Color.clear
-                        .frame(height: 1)
-                        .id("sheet-top")
+        VStack(spacing: 24) {
+            Capsule()
+                .fill(.white.opacity(0.45))
+                .frame(width: 64, height: 6)
+                .padding(.top, 4)
+                .accessibilityHidden(true)
 
-                    VStack(spacing: 20) {
-                        Capsule()
-                            .fill(.white.opacity(0.24))
-                            .frame(width: 42, height: 5)
-                            .padding(.top, 10)
-                            .accessibilityHidden(true)
+            VStack(spacing: 10) {
+                Text(session.title)
+                    .font(.title.weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.white)
+                Text(session.frequency)
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.8))
+                Text(session.description)
+                    .font(.subheadline)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .foregroundStyle(.white.opacity(0.72))
+            }
 
-                        VStack(spacing: 8) {
-                            Text(session.title)
-                                .font(.title2.weight(.bold))
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(.white)
-                            Text(session.frequency)
-                                .font(.headline)
-                                .foregroundStyle(Color(hex: "#7CF7E7"))
-                            Text(session.description)
-                                .font(.body)
-                                .multilineTextAlignment(.center)
-                                .foregroundStyle(.white.opacity(0.76))
-                        }
+            SessionScrubberView(value: audioStore.currentTime, totalDuration: audioStore.duration) { target in
+                audioStore.seek(to: target)
+            }
+            .testID("seek-slider")
 
-                        SessionScrubberView(value: Binding(get: {
-                            audioStore.currentTime
-                        }, set: { newValue in
-                            audioStore.seek(to: newValue)
-                        }), range: playbackRange)
+            HStack {
+                Text(audioStore.currentTime.harmoniaPaddedClock)
+                Spacer()
+                Text(audioStore.duration.harmoniaPaddedClock)
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.white.opacity(0.66))
 
-                        HStack {
-                            Text(audioStore.currentTime.harmoniaPaddedClock)
-                            Spacer()
-                            Text(audioStore.duration.harmoniaPaddedClock)
-                        }
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.66))
+            HStack(spacing: 20) {
+                PlayerTransportButton(direction: .backward, isDisabled: !audioStore.isPlaying) {
+                    audioStore.skip(by: -10)
+                    HarmoniaHaptics.selection()
+                }
+                .testID("seek-back-button")
 
-                        HStack(spacing: 20) {
-                            PlayerTransportButton(direction: .backward, isDisabled: !audioStore.isPlaying) {
-                                audioStore.skip(by: -10)
-                                HarmoniaHaptics.selection()
-                            }
-                            SessionPlayPauseButton(isPlaying: audioStore.isPlaying) {
-                                togglePlayback(for: session)
-                            }
-                            PlayerTransportButton(direction: .forward, isDisabled: !audioStore.isPlaying) {
-                                audioStore.skip(by: 10)
-                                HarmoniaHaptics.selection()
-                            }
-                        }
+                SessionPlayPauseButton(isPlaying: audioStore.isPlaying) {
+                    togglePlayback(for: session)
+                }
+                .testID("play-pause-button")
 
-                        HStack(spacing: 10) {
-                            SmallToggleButton(title: "Vibro", systemImage: "iphone.radiowaves.left.and.right", isActive: vibroStore.isVibroacousticActive || showVibro) {
-                                showVibro.toggle()
-                            }
-                            SmallToggleButton(title: "Binaural", systemImage: "waveform.path.ecg", isActive: isBinauralActive || showBinaural) {
-                                showBinaural.toggle()
-                            }
-                            SmallToggleButton(title: "Iso", systemImage: "chevron.left.forwardslash.chevron.right", isActive: isIsochronicActive || showIso) {
-                                showIso.toggle()
-                            }
-                        }
+                PlayerTransportButton(direction: .forward, isDisabled: !audioStore.isPlaying) {
+                    audioStore.skip(by: 10)
+                    HarmoniaHaptics.selection()
+                }
+                .testID("seek-forward-button")
+            }
+            .frame(maxWidth: .infinity)
 
-                        if showVibro {
-                            VibroControlsView(sessionID: session.id)
-                        }
-                        if showBinaural {
-                            BinauralControlsView(sessionID: session.id)
-                        }
-                        if showIso {
-                            IsochronicControlsView()
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 34)
-                    .padding(.top, 6)
+            HStack(spacing: 10) {
+                SmallToggleButton(title: "Vibro", systemImage: "iphone.radiowaves.left.and.right", isActive: vibroStore.isVibroacousticActive || showVibro) {
+                    showVibro.toggle()
+                }
+                SmallToggleButton(title: "Binaural", systemImage: "waveform.path.ecg", isActive: isBinauralActive || showBinaural) {
+                    showBinaural.toggle()
+                }
+                SmallToggleButton(title: "Iso", systemImage: "chevron.left.forwardslash.chevron.right", isActive: isIsochronicActive || showIso) {
+                    showIso.toggle()
                 }
             }
-            .scrollIndicators(.hidden)
-            .background(.black.opacity(0.26), in: .rect(topLeadingRadius: 34, topTrailingRadius: 34))
-            .overlay {
-                RoundedRectangle(cornerRadius: 34)
-                    .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-            }
-            .clipShape(.rect(topLeadingRadius: 34, topTrailingRadius: 34))
-            .presentationContentInteraction(.scrolls)
-            .onAppear {
-                DispatchQueue.main.async {
-                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.8)) {
-                        proxy.scrollTo("sheet-top", anchor: .top)
+
+            if showVibro || showBinaural || showIso {
+                VStack(spacing: 12) {
+                    if showVibro {
+                        VibroControlsView(sessionID: session.id)
+                    }
+                    if showBinaural {
+                        BinauralControlsView(sessionID: session.id)
+                    }
+                    if showIso {
+                        IsochronicControlsView()
                     }
                 }
             }
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 34)
+        .background(Color(.sRGB, red: 20.0 / 255.0, green: 24.0 / 255.0, blue: 30.0 / 255.0, opacity: 0.32), in: .rect(cornerRadius: 32))
+        .overlay {
+            RoundedRectangle(cornerRadius: 32)
+                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 24, y: -6)
     }
 
     private var exitButton: some View {
         Button {
             showExitConfirmation = true
         } label: {
-            ZStack {
-                Circle()
-                    .stroke(.white.opacity(0.16), lineWidth: 1)
-                    .frame(width: 68, height: 68)
-                Circle()
-                    .stroke(.white.opacity(0.22), lineWidth: 1.5)
-                    .frame(width: 54, height: 54)
-                Circle()
-                    .fill(.black.opacity(0.22))
-                    .frame(width: 40, height: 40)
-                SessionExitGlyph()
-                    .frame(width: 16, height: 16)
-            }
-            .background(.white.opacity(0.04), in: .circle)
+            SessionExitButtonArt(isAnimating: audioStore.isPlaying, reduceMotion: reduceMotion)
         }
         .buttonStyle(HarmoniaScaleButtonStyle())
         .accessibilityLabel("End session")
@@ -1768,6 +1767,7 @@ struct SessionPlayerView: View {
 
     private func completeSession(_ session: Session) {
         progressStore.addSession(sessionId: session.id, durationMinutes: max(Int(audioStore.currentTime / 60), session.duration))
+        HarmoniaHaptics.success()
         audioStore.stop()
         vibroStore.stop()
         onComplete(session.id)
@@ -2183,93 +2183,147 @@ struct SessionExitGlyph: View {
     }
 }
 
-struct SessionScrubberView: View {
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-
-    @State private var trackWidth: CGFloat = 1
-    @State private var isDragging: Bool = false
-    @State private var lastFeedbackStep: Int = -1
+struct SessionExitButtonArt: View {
+    let isAnimating: Bool
+    let reduceMotion: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            GeometryReader { geometry in
-                let normalizedProgress: CGFloat = progress(for: value)
-                let fillWidth: CGFloat = max(4, geometry.size.width * normalizedProgress)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
+            let breathValue: Double = isAnimating && !reduceMotion ? breathProgress(time: timeline.date.timeIntervalSinceReferenceDate, cycle: 8.3) : 0.5
+            let scale: CGFloat = CGFloat(0.96 + (0.08 * breathValue))
+            let opacity: Double = 0.7 + (0.2 * breathValue)
 
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.white.opacity(0.16))
-                        .frame(height: 4)
-
-                    Capsule()
-                        .fill(.white.opacity(0.92))
-                        .frame(width: fillWidth, height: 4)
-
-                    Circle()
-                        .fill(.white)
-                        .frame(width: isDragging ? 24 : 18, height: isDragging ? 24 : 18)
-                        .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
-                        .offset(x: thumbOffset(width: geometry.size.width, progress: normalizedProgress))
-                }
-                .frame(height: 30)
-                .contentShape(.rect)
-                .onAppear {
-                    trackWidth = geometry.size.width
-                }
-                .onChange(of: geometry.size.width) { _, newValue in
-                    trackWidth = newValue
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { drag in
-                            isDragging = true
-                            updateValue(for: drag.location.x, width: geometry.size.width)
-                        }
-                        .onEnded { drag in
-                            updateValue(for: drag.location.x, width: geometry.size.width)
-                            isDragging = false
-                            lastFeedbackStep = -1
-                        }
-                )
+            ZStack {
+                Circle()
+                    .stroke(.white.opacity(0.16), lineWidth: 1)
+                    .frame(width: 68, height: 68)
+                Circle()
+                    .stroke(.white.opacity(0.22), lineWidth: 1.5)
+                    .frame(width: 54, height: 54)
+                Circle()
+                    .fill(.black.opacity(0.22))
+                    .frame(width: 40, height: 40)
+                SessionExitGlyph()
+                    .frame(width: 16, height: 16)
             }
-            .frame(height: 30)
+            .background(.white.opacity(0.04), in: .circle)
+            .scaleEffect(scale)
+            .opacity(opacity)
+        }
+        .frame(width: 72, height: 72)
+    }
+}
+
+struct SessionScrubberView: View {
+    let value: Double
+    let totalDuration: Double
+    let onSeek: (Double) -> Void
+
+    @State private var isDragging: Bool = false
+    @State private var scrubValue: Double?
+    @State private var lastFeedbackBucket: Int = -1
+    @State private var pendingSeekWorkItem: DispatchWorkItem?
+
+    private var displayedValue: Double {
+        scrubValue ?? value
+    }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let normalizedProgress: CGFloat = progress(for: displayedValue)
+            let fillWidth: CGFloat = geometry.size.width * normalizedProgress
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(.white.opacity(0.2))
+                    .frame(height: 6)
+
+                Capsule()
+                    .fill(.white)
+                    .frame(width: fillWidth, height: 6)
+
+                Circle()
+                    .fill(.white)
+                    .frame(width: isDragging ? 22 : 18, height: isDragging ? 22 : 18)
+                    .shadow(color: .black.opacity(0.24), radius: 10, y: 4)
+                    .offset(x: thumbOffset(width: geometry.size.width, progress: normalizedProgress))
+            }
+            .frame(height: 32)
+            .contentShape(.rect)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        isDragging = true
+                        let target: Double = resolvedValue(for: drag.location.x, width: geometry.size.width)
+                        scrubValue = target
+                        triggerFeedbackIfNeeded(for: target)
+                        scheduleSeek(to: target)
+                    }
+                    .onEnded { drag in
+                        let target: Double = snappedValue(resolvedValue(for: drag.location.x, width: geometry.size.width))
+                        pendingSeekWorkItem?.cancel()
+                        onSeek(target)
+                        scrubValue = nil
+                        isDragging = false
+                        lastFeedbackBucket = -1
+                    }
+            )
+        }
+        .frame(height: 32)
+        .onDisappear {
+            pendingSeekWorkItem?.cancel()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Playback position")
-        .accessibilityValue(value.harmoniaPaddedClock)
+        .accessibilityValue(displayedValue.harmoniaPaddedClock)
         .accessibilityAdjustableAction { direction in
             switch direction {
             case .increment:
-                value = min(range.upperBound, value + 10)
+                onSeek(snappedValue(value + 10))
             case .decrement:
-                value = max(range.lowerBound, value - 10)
+                onSeek(snappedValue(value - 10))
             @unknown default:
                 break
             }
         }
     }
 
-    private func progress(for value: Double) -> CGFloat {
-        let clampedValue: Double = min(max(value, range.lowerBound), range.upperBound)
-        let total: Double = max(range.upperBound - range.lowerBound, 0.001)
-        return CGFloat((clampedValue - range.lowerBound) / total)
+    private func progress(for currentValue: Double) -> CGFloat {
+        let safeDuration: Double = max(totalDuration, 0.001)
+        let clampedValue: Double = min(max(currentValue, 0), safeDuration)
+        return CGFloat(clampedValue / safeDuration)
     }
 
     private func thumbOffset(width: CGFloat, progress: CGFloat) -> CGFloat {
-        let thumbSize: CGFloat = isDragging ? 24 : 18
-        return min(max(0, width * progress - (thumbSize / 2)), width - thumbSize)
+        let thumbSize: CGFloat = isDragging ? 22 : 18
+        return min(max(0, width * progress - (thumbSize / 2)), max(width - thumbSize, 0))
     }
 
-    private func updateValue(for xPosition: CGFloat, width: CGFloat) {
+    private func resolvedValue(for xPosition: CGFloat, width: CGFloat) -> Double {
         let safeWidth: CGFloat = max(width, 1)
         let clampedX: CGFloat = min(max(0, xPosition), safeWidth)
         let ratio: Double = clampedX / safeWidth
-        value = range.lowerBound + ((range.upperBound - range.lowerBound) * ratio)
+        return max(totalDuration, 0) * ratio
+    }
 
-        let step: Int = Int((ratio * 24).rounded())
-        if step != lastFeedbackStep {
-            lastFeedbackStep = step
+    private func snappedValue(_ currentValue: Double) -> Double {
+        let snapped: Double = (currentValue / 5).rounded() * 5
+        return min(max(0, snapped), max(totalDuration, 0))
+    }
+
+    private func scheduleSeek(to target: Double) {
+        pendingSeekWorkItem?.cancel()
+        let workItem = DispatchWorkItem {
+            onSeek(target)
+        }
+        pendingSeekWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14, execute: workItem)
+    }
+
+    private func triggerFeedbackIfNeeded(for target: Double) {
+        let bucket: Int = Int(target / 5)
+        if bucket != lastFeedbackBucket {
+            lastFeedbackBucket = bucket
             HarmoniaHaptics.selection()
         }
     }
@@ -2279,31 +2333,35 @@ struct VibroControlsView: View {
     @Environment(VibroacousticStore.self) private var vibroStore
     let sessionID: String
 
+    private let columns: [GridItem] = [GridItem(.adaptive(minimum: 104), spacing: 8)]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Vibroacoustic")
                 .font(.headline)
                 .foregroundStyle(.white)
-            Picker("Mode", selection: Binding(get: {
-                vibroStore.currentPattern
-            }, set: { newValue in
-                vibroStore.currentPattern = newValue
-            })) {
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
                 ForEach(vibroStore.patterns) { pattern in
-                    Text(pattern.name).tag(pattern.id)
+                    Button(pattern.name) {
+                        vibroStore.currentPattern = pattern.id
+                    }
+                    .buttonStyle(HarmoniaSelectableChipStyle(isActive: vibroStore.currentPattern == pattern.id, activeColor: Color(hex: "#00FF96").opacity(0.28)))
                 }
             }
-            .pickerStyle(.segmented)
-            HarmoniaStepperRow(title: "Intensity", value: Binding(get: {
+
+            HarmoniaStepperRow(title: "Intensity", valueText: vibroStore.intensity.harmoniaPercentString, value: Binding(get: {
                 vibroStore.intensity
             }, set: { newValue in
                 vibroStore.intensity = newValue
-            }))
-            HarmoniaStepperRow(title: "Haptic sensitivity", value: Binding(get: {
+            }), range: 0...1)
+
+            HarmoniaStepperRow(title: "Haptic Sensitivity", valueText: vibroStore.hapticSensitivity.harmoniaPercentString, value: Binding(get: {
                 vibroStore.hapticSensitivity
             }, set: { newValue in
                 vibroStore.hapticSensitivity = newValue
-            }))
+            }), range: 0...1)
+
             Button(vibroStore.isVibroacousticActive ? "Stop resonance" : "Start resonance") {
                 if vibroStore.isVibroacousticActive {
                     vibroStore.stop()
@@ -2313,8 +2371,8 @@ struct VibroControlsView: View {
             }
             .buttonStyle(HarmoniaGlassButtonStyle())
         }
-        .padding(16)
-        .background(.white.opacity(0.06), in: .rect(cornerRadius: 22))
+        .padding(18)
+        .background(.white.opacity(0.12), in: .rect(cornerRadius: 20))
     }
 }
 
@@ -2326,43 +2384,51 @@ struct BinauralControlsView: View {
         vibroStore.isVibroacousticActive && vibroStore.currentPattern == "binaural"
     }
 
+    private var frequenciesAreLocked: Bool {
+        !vibroStore.isMobileBinauralAllowed(sessionID: sessionID)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Binaural beats")
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Binaural Beats")
                 .font(.headline)
                 .foregroundStyle(.white)
-            if vibroStore.isMobileBinauralAllowed(sessionID: sessionID) {
-                HarmoniaStepperRow(title: "Intensity", value: Binding(get: {
-                    vibroStore.binauralIntensity
-                }, set: { newValue in
-                    vibroStore.setBinauralIntensity(newValue)
-                }))
-                HarmoniaStepperRow(title: "Base frequency", value: Binding(get: {
-                    vibroStore.baseFrequency
-                }, set: { newValue in
-                    vibroStore.baseFrequency = newValue
-                }), step: 10)
-                HarmoniaStepperRow(title: "Beat frequency", value: Binding(get: {
-                    vibroStore.beatFrequency
-                }, set: { newValue in
-                    vibroStore.beatFrequency = newValue
-                }), step: 1)
-                Button(isActive ? "Stop binaural beats" : "Start binaural beats") {
-                    if isActive {
-                        vibroStore.stop()
-                    } else {
-                        vibroStore.start(mode: "binaural")
-                    }
+
+            HarmoniaStepperRow(title: "Intensity", valueText: vibroStore.binauralIntensity.harmoniaPercentString, value: Binding(get: {
+                vibroStore.binauralIntensity
+            }, set: { newValue in
+                vibroStore.setBinauralIntensity(newValue)
+            }), range: 0...1)
+
+            HarmoniaStepperRow(title: "Base Frequency", valueText: frequenciesAreLocked ? "\(Int(vibroStore.baseFrequency)) Hz · Locked on mobile" : "\(Int(vibroStore.baseFrequency)) Hz", value: Binding(get: {
+                vibroStore.baseFrequency
+            }, set: { newValue in
+                vibroStore.baseFrequency = newValue
+            }), range: 100...500, step: 10, isDisabled: frequenciesAreLocked)
+
+            HarmoniaStepperRow(title: "Beat Frequency", valueText: frequenciesAreLocked ? "\(Int(vibroStore.beatFrequency)) Hz · Locked on mobile" : "\(Int(vibroStore.beatFrequency)) Hz", value: Binding(get: {
+                vibroStore.beatFrequency
+            }, set: { newValue in
+                vibroStore.beatFrequency = newValue
+            }), range: 1...40, step: 1, isDisabled: frequenciesAreLocked)
+
+            Button(isActive ? "Stop binaural beats" : "Start binaural beats") {
+                if isActive {
+                    vibroStore.stop()
+                } else {
+                    vibroStore.start(mode: "binaural")
                 }
-                .buttonStyle(HarmoniaGlassButtonStyle())
-            } else {
-                Text("This mode is web-first and only unlocked on mobile for dedicated session flows.")
+            }
+            .buttonStyle(HarmoniaGlassButtonStyle())
+
+            if frequenciesAreLocked {
+                Text("This session keeps its binaural frequencies fixed on mobile.")
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.72))
             }
         }
-        .padding(16)
-        .background(.white.opacity(0.06), in: .rect(cornerRadius: 22))
+        .padding(18)
+        .background(.white.opacity(0.12), in: .rect(cornerRadius: 20))
     }
 }
 
@@ -2375,31 +2441,36 @@ struct IsochronicControlsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Isochronic tones")
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Isochronic Tones")
                 .font(.headline)
                 .foregroundStyle(.white)
-            HarmoniaStepperRow(title: "Intensity", value: Binding(get: {
+
+            HarmoniaStepperRow(title: "Intensity", valueText: vibroStore.isochronicIntensity.harmoniaPercentString, value: Binding(get: {
                 vibroStore.isochronicIntensity
             }, set: { newValue in
                 vibroStore.setIsochronicIntensity(newValue)
-            }))
-            HarmoniaStepperRow(title: "Frequency", value: Binding(get: {
+            }), range: 0...1)
+
+            HarmoniaStepperRow(title: "Frequency", valueText: "\(Int(vibroStore.isochronicFrequency)) Hz", value: Binding(get: {
                 vibroStore.isochronicFrequency
             }, set: { newValue in
                 vibroStore.isochronicFrequency = newValue
-            }), step: 1)
+            }), range: 1...40, step: 1)
+
             ScrollView(.horizontal) {
                 HStack(spacing: 8) {
                     ForEach(presets, id: \.self) { value in
-                        Button("\(Int(value))") {
+                        Button("\(Int(value)) Hz") {
                             vibroStore.isochronicFrequency = value
                         }
-                        .buttonStyle(HarmoniaCapsuleButtonStyle())
+                        .buttonStyle(HarmoniaSelectableChipStyle(isActive: abs(vibroStore.isochronicFrequency - value) < 0.1, activeColor: Color(hex: "#00FF96").opacity(0.28)))
                     }
                 }
             }
             .contentMargins(.horizontal, 1)
+            .scrollIndicators(.hidden)
+
             Button(isActive ? "Stop isochronic tones" : "Start isochronic tones") {
                 if isActive {
                     vibroStore.stop()
@@ -2408,12 +2479,15 @@ struct IsochronicControlsView: View {
                 }
             }
             .buttonStyle(HarmoniaGlassButtonStyle())
-            Text("Precise modulation is best on the web. Mobile uses a lighter approximation.")
+            .disabled(true)
+            .opacity(0.5)
+
+            Text("Isochronic playback is web-only on mobile.")
                 .font(.footnote)
                 .foregroundStyle(.white.opacity(0.72))
         }
-        .padding(16)
-        .background(.white.opacity(0.06), in: .rect(cornerRadius: 22))
+        .padding(18)
+        .background(.white.opacity(0.12), in: .rect(cornerRadius: 20))
     }
 }
 
@@ -3169,26 +3243,26 @@ struct VibroacousticSettingsView: View {
                 Text("Vibroacoustic settings")
                     .font(.largeTitle.weight(.bold))
                     .foregroundStyle(.white)
-                HarmoniaStepperRow(title: "Vibro intensity", value: Binding(get: {
+                HarmoniaStepperRow(title: "Vibro intensity", valueText: vibroStore.intensity.harmoniaPercentString, value: Binding(get: {
                     vibroStore.intensity
                 }, set: { newValue in
                     vibroStore.intensity = newValue
-                }))
-                HarmoniaStepperRow(title: "Haptic sensitivity", value: Binding(get: {
+                }), range: 0...1)
+                HarmoniaStepperRow(title: "Haptic sensitivity", valueText: vibroStore.hapticSensitivity.harmoniaPercentString, value: Binding(get: {
                     vibroStore.hapticSensitivity
                 }, set: { newValue in
                     vibroStore.hapticSensitivity = newValue
-                }))
-                HarmoniaStepperRow(title: "Binaural intensity", value: Binding(get: {
+                }), range: 0...1)
+                HarmoniaStepperRow(title: "Binaural intensity", valueText: vibroStore.binauralIntensity.harmoniaPercentString, value: Binding(get: {
                     vibroStore.binauralIntensity
                 }, set: { newValue in
                     vibroStore.setBinauralIntensity(newValue)
-                }))
-                HarmoniaStepperRow(title: "Isochronic intensity", value: Binding(get: {
+                }), range: 0...1)
+                HarmoniaStepperRow(title: "Isochronic intensity", valueText: vibroStore.isochronicIntensity.harmoniaPercentString, value: Binding(get: {
                     vibroStore.isochronicIntensity
                 }, set: { newValue in
                     vibroStore.setIsochronicIntensity(newValue)
-                }))
+                }), range: 0...1)
             }
             .padding(20)
         }
@@ -4105,28 +4179,68 @@ struct HarmoniaMiniTag: View {
 
 struct HarmoniaStepperRow: View {
     let title: String
+    let valueText: String
     @Binding var value: Double
+    let range: ClosedRange<Double>
     var step: Double = 0.1
+    var isDisabled: Bool = false
+
+    private var progress: CGFloat {
+        let total: Double = max(range.upperBound - range.lowerBound, 0.001)
+        let clampedValue: Double = min(max(value, range.lowerBound), range.upperBound)
+        return CGFloat((clampedValue - range.lowerBound) / total)
+    }
 
     var body: some View {
-        HStack {
-            Text(title)
-                .foregroundStyle(.white)
-            Spacer()
-            Button("−") {
-                value = max(0, value - step)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(valueText)
+                    .font(.footnote.weight(.semibold))
+                    .multilineTextAlignment(.trailing)
             }
-            .buttonStyle(HarmoniaCapsuleButtonStyle())
-            Text(value.harmoniaShortNumber)
-                .foregroundStyle(.white.opacity(0.82))
-                .frame(width: 44)
-            Button("+") {
-                value = min(999, value + step)
+            .foregroundStyle(.white.opacity(isDisabled ? 0.45 : 0.9))
+
+            HStack(spacing: 12) {
+                Button {
+                    value = max(range.lowerBound, value - step)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.headline.weight(.bold))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(HarmoniaIconButtonStyle())
+                .disabled(isDisabled)
+
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(.white.opacity(0.1))
+                            .frame(height: 8)
+                        Capsule()
+                            .fill(Color(hex: "#00FF96"))
+                            .frame(width: geometry.size.width * progress, height: 8)
+                    }
+                    .frame(height: 44)
+                }
+                .frame(height: 44)
+
+                Button {
+                    value = min(range.upperBound, value + step)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.headline.weight(.bold))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(HarmoniaIconButtonStyle())
+                .disabled(isDisabled)
             }
-            .buttonStyle(HarmoniaCapsuleButtonStyle())
+            .opacity(isDisabled ? 0.45 : 1)
         }
         .padding(16)
-        .background(.white.opacity(0.06), in: .rect(cornerRadius: 18))
+        .background(.white.opacity(0.08), in: .rect(cornerRadius: 18))
     }
 }
 
@@ -4138,9 +4252,22 @@ struct SmallToggleButton: View {
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            VStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(.headline.weight(.semibold))
+                Text(title)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(isActive ? Color(hex: "#00FF96") : .white.opacity(0.82))
+            .frame(maxWidth: .infinity)
+            .frame(height: 68)
+            .background(isActive ? Color(hex: "#00FF96").opacity(0.25) : .white.opacity(0.08), in: .rect(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(.white.opacity(isActive ? 0.12 : 0.06), lineWidth: 1)
+            }
         }
-        .buttonStyle(HarmoniaSelectableChipStyle(isActive: isActive, activeColor: Color(hex: "#1EBE83")))
+        .buttonStyle(HarmoniaScaleButtonStyle())
     }
 }
 
@@ -4157,6 +4284,14 @@ nonisolated enum HarmoniaHaptics {
         #if os(iOS)
         Task { @MainActor in
             UISelectionFeedbackGenerator().selectionChanged()
+        }
+        #endif
+    }
+
+    static func success() {
+        #if os(iOS)
+        Task { @MainActor in
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
         #endif
     }
