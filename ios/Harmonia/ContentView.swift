@@ -706,9 +706,6 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         if let httpResponse: HTTPURLResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
             throw URLError(.badServerResponse)
         }
-        if let mimeType: String = response.mimeType, !mimeType.lowercased().hasPrefix("audio/") {
-            throw URLError(.cannotDecodeContentData)
-        }
 
         try? FileManager.default.removeItem(at: cacheURL)
         try FileManager.default.moveItem(at: temporaryURL, to: cacheURL)
@@ -1899,6 +1896,34 @@ struct SessionPlayerView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
                     .foregroundStyle(.white.opacity(0.72))
+            }
+
+            if audioStore.currentSessionID == session.id, audioStore.isPreparing {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .tint(.white)
+                    Text("Preparing audio…")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.88))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(.white.opacity(0.10), in: .rect(cornerRadius: 20))
+            }
+
+            if audioStore.currentSessionID == session.id, let errorMessage = audioStore.errorMessage {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(errorMessage)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Button("Retry Audio") {
+                        audioStore.play(session: session)
+                    }
+                    .buttonStyle(HarmoniaGlassButtonStyle())
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(.white.opacity(0.10), in: .rect(cornerRadius: 20))
             }
 
             SessionScrubberView(value: audioStore.currentTime, totalDuration: audioStore.duration) { target in
