@@ -1133,7 +1133,7 @@ struct WelcomeView: View {
                     Image("HarmoniaLoginLogo")
                         .resizable()
                         .scaledToFit()
-                        .frame(maxWidth: 320)
+                        .frame(maxWidth: 200)
                         .shadow(color: .white.opacity(0.12), radius: 24, y: 12)
                         .scaleEffect(pulse ? 1.05 : 0.95)
                         .animation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: pulse)
