@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 import UIKit
 
-nonisolated final class SessionToneEngine {
+final class SessionToneEngine {
     private var engine: AVAudioEngine?
     private var playerNode: AVAudioPlayerNode?
     private var format: AVAudioFormat?
@@ -40,19 +40,16 @@ nonisolated final class SessionToneEngine {
         let newEngine = AVAudioEngine()
         let newPlayerNode = AVAudioPlayerNode()
 
-        let outputFormat = newEngine.outputNode.inputFormat(forBus: 0)
-        let resolvedSampleRate: Double = outputFormat.sampleRate > 0 ? outputFormat.sampleRate : 44_100
-        let channelCount: AVAudioChannelCount = max(2, outputFormat.channelCount)
-        let resolvedFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: resolvedSampleRate, channels: channelCount, interleaved: false) ?? outputFormat
+        let stereoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 44_100, channels: 2, interleaved: false)!
 
         newEngine.attach(newPlayerNode)
-        newEngine.connect(newPlayerNode, to: newEngine.mainMixerNode, format: resolvedFormat)
+        newEngine.connect(newPlayerNode, to: newEngine.mainMixerNode, format: stereoFormat)
         newEngine.mainMixerNode.outputVolume = 1
 
         self.engine = newEngine
         self.playerNode = newPlayerNode
-        self.format = resolvedFormat
-        self.sampleRate = resolvedSampleRate
+        self.format = stereoFormat
+        self.sampleRate = 44_100
         self.isSetUp = true
     }
 
@@ -62,27 +59,30 @@ nonisolated final class SessionToneEngine {
             return
         }
 
+        if isSetUp {
+            stop()
+            isSetUp = false
+            engine = nil
+            playerNode = nil
+            format = nil
+        }
+
         do {
             setUp()
             guard let engine, let playerNode else { return }
-            try activateAudioSession()
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
             if !engine.isRunning {
                 engine.prepare()
                 try engine.start()
             }
             playerNode.stop()
-            playerNode.reset()
             playerNode.scheduleBuffer(buffer, at: nil, options: .loops)
             playerNode.play()
         } catch {
             stop()
         }
-    }
-
-    private func activateAudioSession() throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
-        try session.setActive(true)
     }
 
     private func makeResonanceBuffer(frequencies: [Double], intensity: Double, pulsePattern: [Double]) -> AVAudioPCMBuffer? {
@@ -161,7 +161,7 @@ nonisolated final class SessionToneEngine {
     }
 }
 
-nonisolated final class HarmoniaPulsePlayer {
+final class HarmoniaPulsePlayer {
     private var task: Task<Void, Never>?
 
     func start(pattern: [Double], intensity: Double, sensitivity: Double) {
