@@ -1590,7 +1590,7 @@ struct HomeView: View {
                     Image(systemName: "chevron.right")
                 }
                 .font(.headline)
-                .foregroundStyle(.white)
+                .foregroundStyle(Color(hex: "#C4A882"))
                 .padding(16)
                 .background(.white.opacity(0.08), in: .rect(cornerRadius: 22))
             }
