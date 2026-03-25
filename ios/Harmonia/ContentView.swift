@@ -1892,20 +1892,7 @@ struct SessionPlayerView: View {
                 .background(.white.opacity(0.10), in: .rect(cornerRadius: 20))
             }
 
-            if audioStore.currentSessionID == session.id, let errorMessage = audioStore.errorMessage {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(errorMessage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                    Button("Retry Audio") {
-                        audioStore.retry(session: session)
-                    }
-                    .buttonStyle(HarmoniaGlassButtonStyle())
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(.white.opacity(0.10), in: .rect(cornerRadius: 20))
-            }
+
 
             SessionScrubberView(value: audioStore.currentTime, totalDuration: audioStore.duration) { target in
                 audioStore.seek(to: target)
@@ -1940,13 +1927,7 @@ struct SessionPlayerView: View {
             }
             .frame(maxWidth: .infinity)
 
-            if audioStore.currentSessionID == session.id, !audioStore.isPreparing, !audioStore.isPlaying, audioStore.currentTime < 0.1 {
-                Button("Retry Audio") {
-                    audioStore.retry(session: session)
-                }
-                .buttonStyle(HarmoniaGlassButtonStyle())
-                .frame(maxWidth: .infinity)
-            }
+
 
             HStack(spacing: 10) {
                 SmallToggleButton(title: "Vibro", systemImage: "iphone.radiowaves.left.and.right", isActive: vibroStore.isVibroacousticActive || showVibro) {
