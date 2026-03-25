@@ -74,7 +74,7 @@ struct SubscriptionView: View {
                 onSuccess: {
                     progressStore.activateSubscription()
                     showCardModal = false
-                    alertTitle = "Welcome to Rork Max!"
+                    alertTitle = "Welcome to Premium!"
                     alertMessage = "Your subscription is now active."
                     showAlert = true
                 }
@@ -86,7 +86,7 @@ struct SubscriptionView: View {
         }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") {
-                if alertTitle == "Welcome to Rork Max!" {
+                if alertTitle == "Welcome to Premium!" {
                     dismiss()
                 }
             }
@@ -141,7 +141,7 @@ struct SubscriptionView: View {
     private var heroSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                badgePill(icon: "sparkles", iconColor: gold, text: "Rork Max", textColor: gold, bgColor: gold.opacity(0.10), borderColor: gold.opacity(0.22))
+                badgePill(icon: "sparkles", iconColor: gold, text: "Premium", textColor: gold, bgColor: gold.opacity(0.10), borderColor: gold.opacity(0.22))
                 badgePill(icon: "shield", iconColor: textDim, text: "Cancel anytime", textColor: textDim, bgColor: .white.opacity(0.06), borderColor: .white.opacity(0.12))
             }
 
@@ -155,7 +155,7 @@ struct SubscriptionView: View {
                         .foregroundStyle(bg0)
                 }
 
-                Text("Upgrade to Rork Max")
+                Text("Upgrade to Premium")
                     .font(.system(size: 26, weight: .heavy))
                     .foregroundStyle(textColor)
                     .tracking(-0.3)
@@ -592,7 +592,7 @@ struct SubscriptionView: View {
                 isProcessing = false
                 progressStore.activateSubscription()
                 HarmoniaHaptics.success()
-                alertTitle = "Welcome to Rork Max!"
+                alertTitle = "Welcome to Premium!"
                 alertMessage = "Your subscription is now active."
                 showAlert = true
             }

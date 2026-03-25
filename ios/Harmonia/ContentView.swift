@@ -1561,7 +1561,7 @@ struct HomeView: View {
                 HarmoniaPill(text: "Daily check-in")
                 Spacer()
                 Button(action: onOpenSubscription) {
-                    Label("Rork Max", systemImage: "crown.fill")
+                    Label("Premium", systemImage: "crown.fill")
                 }
                 .buttonStyle(HarmoniaCapsuleButtonStyle())
                 .testID("subscription-open")
