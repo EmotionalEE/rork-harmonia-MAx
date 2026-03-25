@@ -1559,7 +1559,12 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Button(action: onOpenSubscription) {
-                    Label("Premium", systemImage: "crown.fill")
+                    HStack(spacing: 6) {
+                        Image(systemName: "crown.fill")
+                            .foregroundStyle(Color(red: 0.973, green: 0.769, blue: 0.424))
+                        Text("Premium")
+                            .foregroundStyle(Color(red: 0.29, green: 0.64, blue: 1.0))
+                    }
                 }
                 .buttonStyle(HarmoniaCapsuleButtonStyle())
                 .testID("subscription-open")
