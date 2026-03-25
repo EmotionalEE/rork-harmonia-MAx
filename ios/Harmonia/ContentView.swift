@@ -3434,16 +3434,56 @@ struct JournalEntryView: View {
                 }
                 .buttonStyle(HarmoniaScaleButtonStyle())
 
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Discard")
-                        .font(.system(size: 14, weight: .bold))
+                HStack(spacing: 10) {
+                    Button {
+                        let delta: String = {
+                            let score = Int(progress * 100)
+                            if score > 55 { return "lighter" }
+                            if score < 45 { return "heavier" }
+                            return "no-change"
+                        }()
+                        onDeepen(FeelingsChatContext(
+                            id: UUID().uuidString,
+                            source: "daily-checkin",
+                            sessionId: nil,
+                            sessionName: nil,
+                            feelingDelta: delta,
+                            feelingScore: progress * 100,
+                            dateISO: date,
+                            userNote: note.isEmpty ? nil : String(note.prefix(280))
+                        ))
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "message.fill")
+                                .font(.system(size: 14))
+                            Text("Deepen")
+                                .font(.system(size: 14, weight: .black))
+                        }
+                        .foregroundStyle(jc.textDim)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(.white.opacity(0.06), in: .rect(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(jc.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Discard")
+                                .font(.system(size: 14, weight: .black))
+                        }
                         .foregroundStyle(jc.textFaint)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 14)
+                        .background(.white.opacity(0.06), in: .rect(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(jc.stroke, lineWidth: 1))
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
                 }
-                .buttonStyle(HarmoniaScaleButtonStyle())
 
                 Text("Tip: honest notes make your insights more accurate.")
                     .font(.system(size: 12, weight: .bold))
