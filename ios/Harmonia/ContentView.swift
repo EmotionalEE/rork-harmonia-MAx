@@ -1665,10 +1665,17 @@ struct HomeView: View {
                     .foregroundStyle(.white.opacity(0.7))
             }
             .padding(18)
-            .background(.ultraThinMaterial, in: .rect(cornerRadius: 24))
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#1A1D3A"), Color(hex: "#181B35")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: .rect(cornerRadius: 24)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 24)
-                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                    .strokeBorder(Color(hex: "#6B5CE7").opacity(0.45), lineWidth: 1.5)
             }
         }
         .buttonStyle(.plain)
