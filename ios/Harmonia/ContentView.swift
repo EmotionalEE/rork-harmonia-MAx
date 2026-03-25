@@ -677,7 +677,7 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
 
     private func activateAudioSession() throws {
         let session: AVAudioSession = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default, options: [.allowBluetooth, .allowBluetoothA2DP])
+        try session.setCategory(.playback, mode: .default)
         try session.setActive(true)
     }
 
