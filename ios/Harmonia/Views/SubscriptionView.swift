@@ -422,7 +422,7 @@ struct SubscriptionView: View {
     }
 
     private var featuresSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("What you get")
                 .font(.system(size: 16, weight: .heavy))
                 .foregroundStyle(textColor)
@@ -438,26 +438,25 @@ struct SubscriptionView: View {
                     "Progress tracking & insights",
                     "Ad-free experience"
                 ], id: \.self) { feature in
-                    HStack(alignment: .center, spacing: 12) {
+                    HStack(alignment: .center, spacing: 10) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 10)
+                            RoundedRectangle(cornerRadius: 8)
                                 .fill(gold.opacity(0.95))
-                                .frame(width: 26, height: 26)
+                                .frame(width: 22, height: 22)
                             Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .heavy))
+                                .font(.system(size: 10, weight: .heavy))
                                 .foregroundStyle(bg0)
                         }
                         Text(feature)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(textColor)
-                            .lineSpacing(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 6)
                 }
             }
-            .padding(14)
+            .padding(12)
             .background(.white.opacity(0.08), in: .rect(cornerRadius: 18))
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
@@ -465,7 +464,7 @@ struct SubscriptionView: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 20)
+        .padding(.top, 14)
     }
 
     private var legalLinks: some View {
