@@ -4346,6 +4346,37 @@ struct EmotionIconView: View {
     let color: Color
     let size: CGFloat
 
+    @State private var rotation: Double = 0
+    @State private var pulseScale: CGFloat = 1.0
+
+    private var rotationSpeed: Double {
+        switch emotionID {
+        case "anxious": return 12
+        case "stressed": return 10
+        case "angry": return 8
+        case "energized": return 6
+        case "happy": return 15
+        case "inspired": return 18
+        case "calm": return 25
+        case "sad": return 22
+        default: return 20
+        }
+    }
+
+    private var pulseRange: ClosedRange<CGFloat> {
+        switch emotionID {
+        case "anxious": return 0.92...1.08
+        case "stressed": return 0.94...1.06
+        case "angry": return 0.90...1.10
+        case "energized": return 0.93...1.07
+        case "calm": return 0.97...1.03
+        case "sad": return 0.96...1.04
+        case "happy": return 0.95...1.05
+        case "inspired": return 0.94...1.06
+        default: return 0.96...1.04
+        }
+    }
+
     var body: some View {
         Canvas { context, canvasSize in
             let scale: CGFloat = canvasSize.width / 24
@@ -4372,6 +4403,16 @@ struct EmotionIconView: View {
             }
         }
         .frame(width: size, height: size)
+        .rotationEffect(.degrees(rotation))
+        .scaleEffect(pulseScale)
+        .onAppear {
+            withAnimation(.linear(duration: rotationSpeed).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+            withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
+                pulseScale = pulseRange.upperBound
+            }
+        }
     }
 
     private func stroke(_ width: CGFloat, opacity: Double = 0.95) -> StrokeStyle {
