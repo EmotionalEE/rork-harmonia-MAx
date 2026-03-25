@@ -4609,20 +4609,31 @@ struct HarmoniaBackgroundView: View {
     let colors: [Color]
 
     var body: some View {
-        ZStack {
-            LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+        GeometryReader { geo in
+            ZStack {
+                Color(hex: "#070A12")
+                    .ignoresSafeArea()
+                LinearGradient(
+                    colors: [Color(hex: "#070A12"), Color(hex: "#0B1022"), Color(hex: "#071A24")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
                 .ignoresSafeArea()
-            Circle()
-                .fill(colors.last?.opacity(0.32) ?? .clear)
-                .frame(width: 260, height: 260)
-                .blur(radius: 80)
-                .offset(x: -140, y: -260)
-            Circle()
-                .fill(Color(hex: "#1FD6C1").opacity(0.18))
-                .frame(width: 260, height: 260)
-                .blur(radius: 90)
-                .offset(x: 140, y: 260)
+                Circle()
+                    .fill(Color(red: 74/255, green: 163/255, blue: 255/255).opacity(0.22))
+                    .frame(width: 320, height: 320)
+                    .rotationEffect(.degrees(18))
+                    .position(x: geo.size.width + 20, y: -10)
+                    .allowsHitTesting(false)
+                Circle()
+                    .fill(Color(red: 31/255, green: 214/255, blue: 193/255).opacity(0.16))
+                    .frame(width: 360, height: 360)
+                    .rotationEffect(.degrees(-10))
+                    .position(x: -40, y: geo.size.height + 60)
+                    .allowsHitTesting(false)
+            }
         }
+        .ignoresSafeArea()
     }
 }
 
