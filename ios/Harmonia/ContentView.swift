@@ -4547,81 +4547,424 @@ struct InsightsView: View {
     @Environment(UserProgressStore.self) private var progressStore
     let onDismiss: () -> Void
 
-    private var averageLength: Int {
+    private var avgLength: Int {
         guard progressStore.progress.totalSessions > 0 else { return 0 }
         return progressStore.progress.totalMinutes / progressStore.progress.totalSessions
     }
 
-    private var averageReflection: Double {
+    private var completionPercent: Int {
+        let total: Int = harmoniaSessions.filter { $0.id != "welcome-intro" }.count
+        guard total > 0 else { return 0 }
+        let unique: Int = Set(progressStore.progress.completedSessions).count
+        return min(Int((Double(unique) / Double(total)) * 100), 100)
+    }
+
+    private var avgReflectionScore: Double {
         guard !progressStore.progress.reflectionLog.isEmpty else { return 0 }
-        let total = progressStore.progress.reflectionLog.reduce(0) { $0 + $1.sliderValue }
+        let total: Double = progressStore.progress.reflectionLog.reduce(0) { $0 + $1.sliderValue }
         return total / Double(progressStore.progress.reflectionLog.count)
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack {
-                    Button(action: onDismiss) {
-                        Image(systemName: "arrow.left")
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(.white.opacity(0.08), in: .circle)
-                    }
-                    Spacer()
+    private var weeklyCadence: [(String, Int)] {
+        let calendar: Calendar = Calendar.current
+        let today: Date = calendar.startOfDay(for: Date())
+        let dayLetters: [String] = ["M", "T", "W", "T", "F", "S", "S"]
+        var result: [(String, Int)] = []
+        for i in (0..<7).reversed() {
+            guard let date: Date = calendar.date(byAdding: .day, value: -i, to: today) else { continue }
+            let dateString: String = Date.harmoniaDayString(from: date)
+            let weekday: Int = calendar.component(.weekday, from: date)
+            let idx: Int = (weekday + 5) % 7
+            let count: Int = progressStore.progress.completedSessions.filter { sessionID in
+                if let lastDate = progressStore.progress.lastSessionDate {
+                    return lastDate == dateString
                 }
-                Text("Insights")
-                    .font(.largeTitle.weight(.bold))
-                    .foregroundStyle(.white)
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Harmonia intelligence")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color(hex: "#1FD6C1"))
-                    Text("Dive deeper into your sonic rituals")
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white)
-                }
-                HStack(spacing: 12) {
-                    InsightMetricCard(title: "Completion", value: "\(progressStore.progress.totalSessions)")
-                    InsightMetricCard(title: "Avg length", value: "\(averageLength)m")
-                }
-                HStack(spacing: 12) {
-                    InsightMetricCard(title: "Reflections", value: "\(progressStore.progress.reflectionLog.count)")
-                    InsightMetricCard(title: "Last session", value: progressStore.progress.lastSessionDate ?? "—")
-                }
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Reflection pulse")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                    Text(averageReflection == 0 ? "Your reflection pulse will appear after your first saved check-in." : "Average reflection score: \(Int(averageReflection))")
-                        .foregroundStyle(.white.opacity(0.72))
-                }
-                .padding(18)
-                .background(.white.opacity(0.08), in: .rect(cornerRadius: 24))
-            }
-            .padding(20)
+                return false
+            }.count
+            let dayCount: Int = dateString == progressStore.progress.lastSessionDate ? max(count, 1) : 0
+            result.append((dayLetters[idx], dayCount))
         }
-        .background(HarmoniaBackgroundView(colors: [Color(hex: "#070A12"), Color(hex: "#0B1022")]))
+        return result
+    }
+
+    private var topSessions: [(Session, Int)] {
+        var counts: [String: Int] = [:]
+        for id in progressStore.progress.completedSessions {
+            counts[id, default: 0] += 1
+        }
+        let sorted: [(String, Int)] = counts.sorted { $0.value > $1.value }
+        var result: [(Session, Int)] = []
+        for (id, count) in sorted.prefix(3) {
+            if let session: Session = resolveSession(id: id) {
+                result.append((session, count))
+            }
+        }
+        return result
+    }
+
+    private var lastSessionRelative: String {
+        guard let dateString = progressStore.progress.lastSessionDate,
+              let date: Date = Date.harmoniaDayFormatter.date(from: dateString) else {
+            return "No sessions yet"
+        }
+        let days: Int = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        if days == 0 { return "Today" }
+        if days == 1 { return "Yesterday" }
+        return "\(days)d ago"
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                insightsHeader
+                    .padding(.bottom, 18)
+                insightsHeroCard
+                    .padding(.bottom, 18)
+                insightsStatsGrid
+                    .padding(.bottom, 18)
+                insightsWeeklyCadence
+                    .padding(.bottom, 18)
+                insightsReflectionPulse
+                    .padding(.bottom, 18)
+                insightsSignatureJourneys
+                    .padding(.bottom, 18)
+                insightsMicroStep
+                    .padding(.bottom, 40)
+            }
+            .padding(.horizontal, 20)
+        }
+        .background(
+            ZStack {
+                Color(hex: "#04030b").ignoresSafeArea()
+                LinearGradient(
+                    colors: [Color(hex: "#04030b"), Color(hex: "#0f0a1f"), Color(hex: "#04030b")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+            }
+        )
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var insightsHeader: some View {
+        HStack {
+            Button {
+                HarmoniaHaptics.selection()
+                onDismiss()
+            } label: {
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.white.opacity(0.08), in: .circle)
+            }
+            Spacer()
+            Text("Insights")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Spacer()
+            Color.clear.frame(width: 40, height: 40)
+        }
+        .padding(.vertical, 16)
+    }
+
+    private var insightsHeroCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("HARMONIA INTELLIGENCE")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color(hex: "#c5ddff"))
+                .tracking(1)
+            Text("Dive deeper into your sonic rituals")
+                .font(.system(size: 24, weight: .heavy))
+                .foregroundStyle(.white)
+            Text(progressStore.progress.totalSessions == 0
+                 ? "Start your first Harmonia journey to unlock personalized insights."
+                 : "You've completed \(progressStore.progress.totalSessions) journeys with a \(avgLength)-minute rhythm.")
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "#d4dcff"))
+                .lineSpacing(4)
+        }
+        .padding(22)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            LinearGradient(colors: [Color(hex: "#1e1140"), Color(hex: "#120824")], startPoint: .topLeading, endPoint: .bottomTrailing),
+            in: .rect(cornerRadius: 28)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 28)
+                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private var insightsStatsGrid: some View {
+        let columns: [GridItem] = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+        return LazyVGrid(columns: columns, spacing: 12) {
+            InsightStatCard(icon: "target", accent: Color(hex: "#148c94"), value: "\(completionPercent)%", label: "Completion", sub: "of Harmonia pathways")
+            InsightStatCard(icon: "clock", accent: Color(hex: "#5237d6"), value: "\(avgLength)m", label: "Avg length", sub: "per session")
+            InsightStatCard(icon: "sparkles", accent: Color(hex: "#8836e2"), value: "\(progressStore.progress.reflectionLog.count)", label: "Reflections", sub: "captured moments")
+            InsightStatCard(icon: "calendar", accent: Color(hex: "#c4b5ec"), value: lastSessionRelative, label: "Last session", sub: "recent checkpoint")
+        }
+    }
+
+    private var insightsWeeklyCadence: some View {
+        let data: [(String, Int)] = weeklyCadence
+        let maxCount: Int = max(data.map(\.1).max() ?? 1, 1)
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "chart.bar.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color(hex: "#148c94"))
+                Text("Weekly cadence")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("Last 7 days")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(hex: "#8ea0c9"))
+            }
+
+            HStack(spacing: 0) {
+                ForEach(Array(data.enumerated()), id: \.offset) { _, item in
+                    VStack(spacing: 4) {
+                        ZStack(alignment: .bottom) {
+                            Capsule()
+                                .fill(.white.opacity(0.08))
+                                .frame(width: 10, height: 90)
+                            Capsule()
+                                .fill(Color(hex: "#148c94"))
+                                .frame(width: 10, height: item.1 > 0 ? max(CGFloat(item.1) / CGFloat(maxCount) * 80, 6) : 4)
+                        }
+                        .frame(height: 90)
+                        Text(item.0)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color(hex: "#8ea0c9"))
+                        Text("\(item.1)")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+
+            Text("Keep a steady beat of three+ sessions per week to amplify nervous system balance.")
+                .font(.system(size: 12))
+                .foregroundStyle(Color(hex: "#9fb4d3"))
+                .lineSpacing(4)
+        }
+        .padding(18)
+        .background(Color(hex: "#04051422").opacity(0.9), in: .rect(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(.white.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private var insightsReflectionPulse: some View {
+        let reflections: [ReflectionEntry] = Array(progressStore.progress.reflectionLog.prefix(3))
+        let avgScore: Int = Int(avgReflectionScore.rounded())
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color(hex: "#8836e2"))
+                Text("Reflection pulse")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("Avg score \(avgScore)/10")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(hex: "#8ea0c9"))
+            }
+
+            Text(reflectionNarrative)
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "#d4dcff"))
+                .lineSpacing(4)
+
+            if reflections.isEmpty {
+                Text("Once you log reflections, we will highlight emotional breakthroughs and patterns here.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "#8ea0c9"))
+                    .lineSpacing(4)
+            } else {
+                ForEach(reflections) { entry in
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle()
+                            .fill(Color(hex: "#5237d6"))
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 6)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.sessionName)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                            Text(entry.insight.isEmpty ? "Reflection captured" : entry.insight)
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color(hex: "#9fb4d3"))
+                                .lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                        Text("\(Int(entry.sliderValue))")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(.white.opacity(0.08), in: .rect(cornerRadius: 12))
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background(Color(hex: "#04051422").opacity(0.9), in: .rect(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(.white.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private var reflectionNarrative: String {
+        if progressStore.progress.reflectionLog.isEmpty {
+            return "Once you log reflections, we will highlight emotional breakthroughs and patterns here."
+        }
+        if avgReflectionScore >= 7 {
+            return "Your reflections trend toward grounded optimism. The sessions are landing where they need to."
+        }
+        if avgReflectionScore >= 4 {
+            return "You are actively processing mixed emotions. This is healthy movement, not stagnation."
+        }
+        return "Your reflections show heavier emotions surfacing. That takes courage — keep going."
+    }
+
+    private var insightsSignatureJourneys: some View {
+        let top: [(Session, Int)] = topSessions
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "flame.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color(hex: "#c4b5ec"))
+                Text("Signature journeys")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("Most revisited")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(hex: "#8ea0c9"))
+            }
+
+            if top.isEmpty {
+                Text("As you repeat sessions, we'll surface your most stabilizing rituals here.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(hex: "#8ea0c9"))
+                    .lineSpacing(4)
+            } else {
+                ForEach(Array(top.enumerated()), id: \.0) { _, item in
+                    let session: Session = item.0
+                    let count: Int = item.1
+                    Button {
+                        HarmoniaHaptics.impact()
+                    } label: {
+                        HStack(spacing: 12) {
+                            LinearGradient(colors: session.colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+                                .frame(width: 48, height: 48)
+                                .clipShape(.rect(cornerRadius: 18))
+                                .overlay {
+                                    Image(systemName: "waveform.path.ecg")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(.white)
+                                }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(session.title)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(.white)
+                                Text("\(session.duration) min • \(count)x revisited")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color(hex: "#9fb4d3"))
+                            }
+                            Spacer(minLength: 0)
+                            Text("Play")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(.white.opacity(0.12), in: .capsule)
+                        }
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(18)
+        .background(Color(hex: "#04051422").opacity(0.9), in: .rect(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(.white.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private var insightsMicroStep: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color(hex: "#148c94"))
+                Text("Next micro-step")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("Personal cue")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color(hex: "#8ea0c9"))
+            }
+            Text("Pair tonight's session with a 3-minute breath hold practice. Logging that reflection will unlock a precision trendline in Insights.")
+                .font(.system(size: 14))
+                .foregroundStyle(Color(hex: "#d4dcff"))
+                .lineSpacing(4)
+        }
+        .padding(18)
+        .background(Color(hex: "#04051422").opacity(0.9), in: .rect(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(.white.opacity(0.06), lineWidth: 1)
+        }
     }
 }
 
-struct InsightMetricCard: View {
-    let title: String
+struct InsightStatCard: View {
+    let icon: String
+    let accent: Color
     let value: String
+    let label: String
+    let sub: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.66))
+        VStack(alignment: .leading, spacing: 0) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundStyle(accent)
+                .frame(width: 32, height: 32)
+                .background(accent.opacity(0.13), in: .rect(cornerRadius: 12))
+                .padding(.bottom, 12)
             Text(value)
-                .font(.title3.weight(.bold))
+                .font(.system(size: 22, weight: .heavy))
                 .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundStyle(Color(hex: "#c5ddff"))
+                .padding(.top, 2)
+            Text(sub)
+                .font(.system(size: 11))
+                .foregroundStyle(Color(hex: "#8ea0c9"))
+                .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(.white.opacity(0.08), in: .rect(cornerRadius: 22))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.04), in: .rect(cornerRadius: 20))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20)
+                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+        }
     }
 }
 
