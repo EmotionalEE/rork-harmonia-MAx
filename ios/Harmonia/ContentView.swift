@@ -3037,87 +3037,506 @@ struct FeelingsChatView: View {
 
 struct JournalEntryView: View {
     @Environment(JournalStore.self) private var journalStore
+    @Environment(\.dismiss) private var dismiss
     let date: String
     let onDeepen: (FeelingsChatContext) -> Void
 
-    @State private var emotion: String = "calm"
+    @State private var emotion: String = ""
     @State private var progress: Double = 0.5
     @State private var note: String = ""
+    @State private var isSaving: Bool = false
+    @State private var lastHapticBucket: Int = -1
+
+    private let jc = JournalColors()
+
+    private var formattedDate: String {
+        guard let d = Date.harmoniaDayFormatter.date(from: date) else { return date }
+        let f = DateFormatter()
+        f.dateStyle = .long
+        return f.string(from: d)
+    }
+
+    private var heroSubtitle: String {
+        let score = Int(progress * 100)
+        if score > 50 { return "Beautiful work. What shifted for you?" }
+        if score < 50 { return "Thank you for your honesty. What came up for you?" }
+        return "Take a moment to notice what you feel."
+    }
+
+    private var shiftMicroLabel: String {
+        let score = Int(progress * 100)
+        if score <= 15 { return "Feeling unsettled" }
+        if score <= 35 { return "Still processing" }
+        if score <= 50 { return "More grounded" }
+        if score <= 70 { return "More peaceful" }
+        if score <= 85 { return "More connected" }
+        return "Feeling lighter"
+    }
 
     var body: some View {
-        NavigationStack {
+        ZStack(alignment: .bottom) {
+            journalBackground
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("How are you feeling?")
-                        .font(.largeTitle.weight(.bold))
-                        .foregroundStyle(.white)
-                    Text(date)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
-                    VStack(alignment: .leading, spacing: 14) {
-                        Text("Choose an emotion")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            ForEach(harmoniaStates) { state in
-                                Button(state.label) {
-                                    emotion = state.id
-                                }
-                                .buttonStyle(HarmoniaSelectableChipStyle(isActive: emotion == state.id))
+                    topBar
+                    heroCard
+                    emotionSection
+                    shiftSection
+                    journalSection
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 160)
+            }
+            .scrollIndicators(.hidden)
+
+            footerBar
+        }
+        .task {
+            if let existing = journalStore.getEntryByDate(date) {
+                emotion = existing.emotion
+                progress = existing.progress
+                note = existing.note ?? ""
+            }
+        }
+    }
+
+    // MARK: - Background
+
+    private var journalBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#0D0907"), Color(hex: "#1A120D"), Color(hex: "#1C150E")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            Circle()
+                .fill(Color(hex: "#E8A54B").opacity(0.18))
+                .frame(width: 320, height: 320)
+                .blur(radius: 80)
+                .offset(x: 140, y: -120)
+                .rotationEffect(.degrees(18))
+                .allowsHitTesting(false)
+
+            Circle()
+                .fill(Color(hex: "#D4885A").opacity(0.14))
+                .frame(width: 360, height: 360)
+                .blur(radius: 90)
+                .offset(x: -160, y: 300)
+                .rotationEffect(.degrees(-10))
+                .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: - Top Bar
+
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(jc.text)
+                    .frame(width: 40, height: 40)
+                    .background(jc.card, in: .rect(cornerRadius: 14))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(jc.stroke, lineWidth: 1)
+                    }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("How are you feeling?")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(jc.text)
+                    .tracking(0.2)
+                Text(formattedDate)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(jc.textFaint)
+            }
+
+            Spacer()
+            Color.clear.frame(width: 40)
+        }
+        .padding(.top, 6)
+    }
+
+    // MARK: - Hero Card
+
+    private var heroCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Label("Reflection", systemImage: "checkmark")
+                    .font(.system(size: 13, weight: .heavy))
+                    .foregroundStyle(jc.gold)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(jc.gold.opacity(0.10), in: .capsule)
+                    .overlay {
+                        Capsule().strokeBorder(jc.gold.opacity(0.22), lineWidth: 1)
+                    }
+
+                Text("Takes ~30 seconds")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(jc.textDim)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(.white.opacity(0.06), in: .capsule)
+                    .overlay {
+                        Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                    }
+            }
+
+            Text("Track how this session moved through you.")
+                .font(.system(size: 26, weight: .black))
+                .foregroundStyle(jc.text)
+                .tracking(-0.3)
+                .lineSpacing(4)
+                .padding(.top, 14)
+
+            Text(heroSubtitle)
+                .font(.system(size: 15))
+                .foregroundStyle(jc.textDim)
+                .lineSpacing(4)
+                .padding(.top, 10)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+    }
+
+    // MARK: - Emotion Section
+
+    private var emotionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Choose an emotion")
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(jc.text)
+                .tracking(0.2)
+
+            let chipEmotions: [(String, String)] = [
+                ("anxious", "Anxious"), ("stressed", "Stressed"),
+                ("sad", "Sad"), ("angry", "Angry"),
+                ("calm", "Calm"), ("happy", "Happy"),
+                ("inspired", "Inspired"), ("energized", "Energized")
+            ]
+
+            FlowChipLayout(spacing: 10) {
+                ForEach(chipEmotions, id: \.0) { id, label in
+                    Button {
+                        emotion = id
+                        HarmoniaHaptics.selection()
+                    } label: {
+                        Text(label)
+                            .font(.system(size: 13, weight: .heavy))
+                            .foregroundStyle(emotion == id ? jc.text : jc.textDim)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(
+                                emotion == id
+                                    ? Color(hex: "#1FD6C1").opacity(0.14)
+                                    : .white.opacity(0.06),
+                                in: .rect(cornerRadius: 14)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14)
+                                    .strokeBorder(
+                                        emotion == id
+                                            ? Color(hex: "#1FD6C1").opacity(0.30)
+                                            : jc.stroke,
+                                        lineWidth: 1
+                                    )
+                            }
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Shift Section
+
+    private var shiftSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("How are you feeling now compared to before this session?")
+                .font(.system(size: 14, weight: .heavy))
+                .foregroundStyle(jc.text)
+
+            HStack {
+                Text("Heavier")
+                Spacer()
+                Text("No change")
+                Spacer()
+                Text("Lighter")
+            }
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(jc.textFaint)
+
+            GeometryReader { geo in
+                let trackWidth = geo.size.width
+                let fillWidth = trackWidth * progress
+                let thumbX = fillWidth
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.white.opacity(0.10))
+                        .overlay {
+                            Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                        }
+                        .frame(height: 10)
+
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: "#1FD6C1").opacity(0.55), Color(hex: "#4AA3FF").opacity(0.55)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(fillWidth, 4), height: 10)
+
+                    Circle()
+                        .fill(.white.opacity(0.10))
+                        .overlay {
+                            Circle().strokeBorder(jc.strokeStrong, lineWidth: 1)
+                        }
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color(hex: "#148c94"))
+                                .frame(width: 10, height: 10)
+                        }
+                        .frame(width: 28, height: 28)
+                        .offset(x: max(0, min(thumbX - 14, trackWidth - 28)))
+                }
+                .frame(height: 28)
+                .contentShape(.rect)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { drag in
+                            let newVal = min(max(drag.location.x / trackWidth, 0), 1)
+                            progress = newVal
+                            let bucket = Int(newVal * 10)
+                            if bucket != lastHapticBucket {
+                                lastHapticBucket = bucket
+                                HarmoniaHaptics.selection()
                             }
                         }
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Shift slider")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        Slider(value: $progress, in: 0...1)
-                            .tint(Color(hex: "#F8C46C"))
-                        Text(progress.harmoniaShiftLabel)
-                            .font(.footnote)
-                            .foregroundStyle(.white.opacity(0.72))
-                    }
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Journal")
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        TextField("Private to you", text: $note, axis: .vertical)
-                            .padding(16)
-                            .background(.white.opacity(0.08), in: .rect(cornerRadius: 20))
-                            .foregroundStyle(.white)
+                )
+            }
+            .frame(height: 28)
+
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14))
+                    .foregroundStyle(jc.gold)
+                Text(shiftMicroLabel)
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundStyle(jc.textDim)
+            }
+            .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(.white.opacity(0.06), in: .capsule)
+            .overlay {
+                Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(14)
+        .background(jc.card, in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(jc.stroke, lineWidth: 1)
+        }
+    }
+
+    // MARK: - Journal Section
+
+    private var journalSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("A few words (optional)")
+                .font(.system(size: 13, weight: .heavy))
+                .foregroundStyle(jc.textDim)
+
+            TextField("What shifted for you today?", text: $note, axis: .vertical)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(jc.text)
+                .frame(minHeight: 140, alignment: .top)
+                .padding(12)
+                .background(.white.opacity(0.06), in: .rect(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(jc.strokeStrong, lineWidth: 1)
+                }
+                .onChange(of: note) { _, newValue in
+                    if newValue.count > 500 {
+                        note = String(newValue.prefix(500))
                     }
                 }
-                .padding(20)
+
+            HStack {
+                Text("Private to you")
+                Spacer()
+                Text("\(note.count)/500")
             }
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 10) {
-                    HStack(spacing: 12) {
-                        Button("Deepen") {
-                            onDeepen(FeelingsChatContext(id: UUID().uuidString, source: "journal-entry", sessionId: nil, sessionName: nil, feelingDelta: progress.harmoniaShiftLabel, feelingScore: progress * 100, dateISO: date, userNote: String(note.prefix(140))))
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(jc.textFaint)
+        }
+        .padding(14)
+        .background(jc.card, in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(jc.stroke, lineWidth: 1)
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footerBar: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [.clear, Color(hex: "#070A12").opacity(0.70), Color(hex: "#070A12").opacity(0.98)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 30)
+            .allowsHitTesting(false)
+
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Button {
+                        onDeepen(FeelingsChatContext(
+                            id: UUID().uuidString,
+                            source: "journal-entry",
+                            sessionId: nil,
+                            sessionName: nil,
+                            feelingDelta: shiftMicroLabel,
+                            feelingScore: progress * 100,
+                            dateISO: date,
+                            userNote: String(note.prefix(140))
+                        ))
+                    } label: {
+                        Label("Deepen", systemImage: "message")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(jc.textDim)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(.white.opacity(0.06), in: .rect(cornerRadius: 18))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 18)
+                                    .strokeBorder(jc.stroke, lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Label("Cancel", systemImage: "xmark")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(jc.textDim)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .background(.white.opacity(0.06), in: .rect(cornerRadius: 18))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 18)
+                                    .strokeBorder(jc.stroke, lineWidth: 1)
+                            }
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+
+                    Button {
+                        isSaving = true
+                        journalStore.upsertEntry(JournalEntry(date: date, emotion: emotion.isEmpty ? "calm" : emotion, progress: progress, note: note.isEmpty ? nil : note))
+                        HarmoniaHaptics.success()
+                        dismiss()
+                    } label: {
+                        Group {
+                            if isSaving {
+                                ProgressView()
+                                    .tint(Color(hex: "#0D0907"))
+                            } else {
+                                Label("Save reflection", systemImage: "checkmark")
+                                    .font(.system(size: 14, weight: .black))
+                                    .foregroundStyle(Color(hex: "#0D0907"))
+                            }
                         }
-                        .buttonStyle(HarmoniaGlassButtonStyle())
-                        Button("Save reflection") {
-                            journalStore.upsertEntry(JournalEntry(date: date, emotion: emotion, progress: progress, note: note.isEmpty ? nil : note))
-                        }
-                        .buttonStyle(HarmoniaPrimaryButtonStyle(colors: [Color(hex: "#5237D6"), Color(hex: "#8836E2")]))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            LinearGradient(
+                                colors: isSaving ? [.white.opacity(0.14), .white.opacity(0.10)] : [Color(hex: "#E8A54B"), Color(hex: "#D4885A")],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: .rect(cornerRadius: 18)
+                        )
                     }
-                    Text("Tip: honest notes make your insights more accurate.")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.64))
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+                    .frame(maxWidth: .infinity)
+                    .layoutPriority(1)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 20)
-                .background(LinearGradient(colors: [.clear, Color.black.opacity(0.54)], startPoint: .top, endPoint: .bottom))
+
+                Text("Tip: honest notes make your insights more accurate.")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(jc.textFaint)
+                    .multilineTextAlignment(.center)
             }
-            .background(LinearGradient(colors: [Color(hex: "#1A120F"), Color(hex: "#2B1B18"), Color.black], startPoint: .top, endPoint: .bottom).ignoresSafeArea())
-            .task {
-                if let existing = journalStore.getEntryByDate(date) {
-                    emotion = existing.emotion
-                    progress = existing.progress
-                    note = existing.note ?? ""
-                }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 20)
+            .background(Color(hex: "#0D0907").opacity(0.98))
+        }
+    }
+}
+
+struct JournalColors {
+    let card: Color = Color(hex: "#FFEBD2").opacity(0.08)
+    let stroke: Color = Color(hex: "#FFEBD2").opacity(0.14)
+    let strokeStrong: Color = Color(hex: "#FFEBD2").opacity(0.22)
+    let text: Color = Color(hex: "#FFF5EB")
+    let textDim: Color = Color(hex: "#FFF5EB").opacity(0.78)
+    let textFaint: Color = Color(hex: "#FFF5EB").opacity(0.58)
+    let gold: Color = Color(hex: "#F8C46C")
+}
+
+struct FlowChipLayout: Layout {
+    var spacing: CGFloat = 10
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > maxWidth, x > 0 {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
             }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x + size.width > bounds.maxX, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
         }
     }
 }
@@ -3131,6 +3550,7 @@ struct ProfileView: View {
     @State private var showNameEditor: Bool = false
     @State private var showEmotionFocus: Bool = false
     @State private var showProfilePicture: Bool = false
+    @State private var journalDate: String?
     @State private var draftName: String = ""
     @State private var resetArmed: Bool = false
     @State private var contentOpacity: Double = 0
@@ -3188,7 +3608,9 @@ struct ProfileView: View {
                     if !recentSessions.isEmpty {
                         recentSessionsCard
                     }
-                    HarmoniaJournalView(entries: journalStore.entries)
+                    HarmoniaJournalView(entries: journalStore.entries) { dateStr in
+                        journalDate = dateStr
+                    }
                     integrationsCard
                     actionsCard
                 }
@@ -3211,6 +3633,20 @@ struct ProfileView: View {
                 profilePictureSheet
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: Binding(
+                get: { journalDate != nil },
+                set: { if !$0 { journalDate = nil } }
+            )) {
+                if let dateStr = journalDate {
+                    JournalEntryView(date: dateStr, onDeepen: { context in
+                        journalDate = nil
+                        dismiss()
+                    })
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.visible)
+                        .presentationContentInteraction(.scrolls)
+                }
             }
         }
         .task {
@@ -3935,38 +4371,176 @@ struct ProfileColors {
 
 struct HarmoniaJournalView: View {
     let entries: [JournalEntry]
+    var onOpenDate: ((String) -> Void)? = nil
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Journal")
-                .font(.headline)
-                .foregroundStyle(.white)
-            ForEach(entries.prefix(5)) { entry in
-                HStack(alignment: .top, spacing: 12) {
-                    Circle()
-                        .fill(Color(hex: "#1FD6C1"))
-                        .frame(width: 10, height: 10)
-                        .padding(.top, 6)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(entry.date)
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.62))
-                        Text(entry.emotion.capitalized)
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                        if let note = entry.note {
-                            Text(note)
-                                .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.72))
-                                .lineLimit(2)
-                        }
-                    }
-                }
-                .padding(14)
-                .background(.white.opacity(0.06), in: .rect(cornerRadius: 18))
-            }
+    @State private var displayedMonth: Date = Date()
+
+    private let dayLabels: [String] = ["S", "M", "T", "W", "T", "F", "S"]
+    private let calendar: Calendar = Calendar.current
+
+    private var monthLabel: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM yyyy"
+        return formatter.string(from: displayedMonth)
+    }
+
+    private var daysInMonth: [DayCell] {
+        let comps = calendar.dateComponents([.year, .month], from: displayedMonth)
+        guard let firstOfMonth = calendar.date(from: comps),
+              let range = calendar.range(of: .day, in: .month, for: firstOfMonth) else {
+            return []
+        }
+        let weekdayOfFirst = calendar.component(.weekday, from: firstOfMonth)
+        let leadingEmpty = weekdayOfFirst - 1
+        var cells: [DayCell] = (0..<leadingEmpty).map { DayCell(id: "empty-\($0)", day: 0, dateString: "") }
+        let year = comps.year ?? 2025
+        let month = comps.month ?? 1
+        for day in range {
+            let dateStr = String(format: "%04d-%02d-%02d", year, month, day)
+            cells.append(DayCell(id: dateStr, day: day, dateString: dateStr))
+        }
+        return cells
+    }
+
+    private func entryFor(_ dateStr: String) -> JournalEntry? {
+        entries.first { $0.date == dateStr }
+    }
+
+    private func emotionColor(_ emotion: String) -> Color {
+        switch emotion.lowercased() {
+        case "anxious": return Color(hex: "#fb7185")
+        case "calm": return Color(hex: "#2dd4bf")
+        case "inspired": return Color(hex: "#43e97b")
+        case "happy": return Color(hex: "#fbbf24")
+        case "sad": return Color(hex: "#818cf8")
+        case "stressed": return Color(hex: "#F7971E")
+        case "angry": return Color(hex: "#f472b6")
+        case "energized": return Color(hex: "#30cfd0")
+        default: return Color(hex: "#1FD6C1")
         }
     }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Journal")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(.white)
+                Spacer()
+                HStack(spacing: 8) {
+                    Button {
+                        withAnimation(.snappy) {
+                            displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
+                        }
+                    } label: {
+                        Text("Prev")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.12), in: .capsule)
+                    }
+                    Text(monthLabel)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(hex: "#cbd5ff"))
+                    Button {
+                        withAnimation(.snappy) {
+                            displayedMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
+                        }
+                    } label: {
+                        Text("Next")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.12), in: .capsule)
+                    }
+                }
+            }
+
+            HStack(spacing: 0) {
+                ForEach(dayLabels, id: \.self) { label in
+                    Text(label)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .textCase(.uppercase)
+                        .tracking(1)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.top, 14)
+            .padding(.bottom, 6)
+
+            let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(daysInMonth) { cell in
+                    if cell.day == 0 {
+                        Color.clear
+                            .aspectRatio(1, contentMode: .fit)
+                    } else {
+                        let entry = entryFor(cell.dateString)
+                        Button {
+                            onOpenDate?(cell.dateString)
+                        } label: {
+                            VStack(spacing: 0) {
+                                Text("\(cell.day)")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                if let entry {
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            Capsule()
+                                                .fill(.white.opacity(0.08))
+                                            Capsule()
+                                                .fill(emotionColor(entry.emotion))
+                                                .frame(width: max(geo.size.width * entry.progress, 2))
+                                        }
+                                    }
+                                    .frame(height: 4)
+                                    .clipShape(.capsule)
+                                    .padding(.top, 4)
+
+                                    Text(entry.emotion.capitalized)
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(.white.opacity(0.12), in: .capsule)
+                                        .lineLimit(1)
+                                        .padding(.top, 4)
+                                } else {
+                                    Spacer(minLength: 0)
+                                }
+                            }
+                            .padding(6)
+                            .frame(maxWidth: .infinity)
+                            .aspectRatio(1, contentMode: .fit)
+                            .background(.white.opacity(0.04), in: .rect(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background(.white.opacity(0.05), in: .rect(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+nonisolated struct DayCell: Identifiable, Sendable {
+    let id: String
+    let day: Int
+    let dateString: String
 }
 
 struct InsightsView: View {
