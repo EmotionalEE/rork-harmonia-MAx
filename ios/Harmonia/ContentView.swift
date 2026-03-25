@@ -5078,40 +5078,668 @@ struct ResetPasswordView: View {
     }
 }
 
+nonisolated struct SolfeggioFrequency: Identifiable, Sendable {
+    let id: Int
+    let name: String
+    let description: String
+    var hz: Int { id }
+}
+
+nonisolated struct ChakraFrequency: Identifiable, Sendable {
+    let id: String
+    let name: String
+    let color: String
+    let frequency: Int
+}
+
+nonisolated struct BinauralBeat: Identifiable, Sendable {
+    let id: Int
+    let name: String
+    let description: String
+    var beatHz: Int { id }
+}
+
+nonisolated struct HapticPatternItem: Identifiable, Sendable {
+    let id: String
+    let name: String
+    let description: String
+}
+
+nonisolated struct VibroModeItem: Identifiable, Sendable {
+    let id: String
+    let name: String
+    let icon: String
+    let description: String
+    let frequencies: [Double]
+}
+
+private let solfeggioData: [SolfeggioFrequency] = [
+    SolfeggioFrequency(id: 174, name: "Foundation", description: "Pain relief & healing"),
+    SolfeggioFrequency(id: 285, name: "Quantum Cognition", description: "Tissue regeneration"),
+    SolfeggioFrequency(id: 396, name: "Liberation", description: "Release fear & guilt"),
+    SolfeggioFrequency(id: 417, name: "Change", description: "Facilitate transformation"),
+    SolfeggioFrequency(id: 528, name: "Love", description: "DNA repair & love"),
+    SolfeggioFrequency(id: 639, name: "Connection", description: "Harmonious relationships"),
+    SolfeggioFrequency(id: 741, name: "Awakening", description: "Intuition & expression"),
+    SolfeggioFrequency(id: 852, name: "Spiritual Order", description: "Return to spiritual order"),
+    SolfeggioFrequency(id: 963, name: "Divine", description: "Divine consciousness")
+]
+
+private let chakraData: [ChakraFrequency] = [
+    ChakraFrequency(id: "root", name: "Root", color: "#ff0000", frequency: 396),
+    ChakraFrequency(id: "sacral", name: "Sacral", color: "#ff8000", frequency: 417),
+    ChakraFrequency(id: "solar_plexus", name: "Solar Plexus", color: "#ffff00", frequency: 528),
+    ChakraFrequency(id: "heart", name: "Heart", color: "#00ff00", frequency: 639),
+    ChakraFrequency(id: "throat", name: "Throat", color: "#0080ff", frequency: 741),
+    ChakraFrequency(id: "third_eye", name: "Third Eye", color: "#8000ff", frequency: 852),
+    ChakraFrequency(id: "crown", name: "Crown", color: "#ff00ff", frequency: 963)
+]
+
+private let binauralData: [BinauralBeat] = [
+    BinauralBeat(id: 2, name: "Delta", description: "Deep sleep & healing"),
+    BinauralBeat(id: 6, name: "Theta", description: "Deep meditation & creativity"),
+    BinauralBeat(id: 10, name: "Alpha", description: "Relaxation & focus"),
+    BinauralBeat(id: 20, name: "Beta", description: "Alertness & concentration"),
+    BinauralBeat(id: 40, name: "Gamma", description: "Higher consciousness")
+]
+
+private let hapticPatternData: [HapticPatternItem] = [
+    HapticPatternItem(id: "gentle_pulse", name: "Gentle Pulse", description: "Soft rhythmic pulses"),
+    HapticPatternItem(id: "rhythmic_wave", name: "Rhythmic Wave", description: "Wave-like vibrations"),
+    HapticPatternItem(id: "power_surge", name: "Power Surge", description: "Strong energizing pulses"),
+    HapticPatternItem(id: "meditation_breath", name: "Meditation Breath", description: "Breathing rhythm"),
+    HapticPatternItem(id: "healing_resonance", name: "Healing Resonance", description: "Therapeutic vibrations"),
+    HapticPatternItem(id: "chakra_activation", name: "Chakra Activation", description: "Energy center stimulation")
+]
+
+private let vibroModeData: [VibroModeItem] = [
+    VibroModeItem(id: "meditation", name: "Deep Meditation", icon: "brain.head.profile", description: "Gamma, Alpha, Theta waves", frequencies: [40, 10, 6]),
+    VibroModeItem(id: "healing", name: "Cellular Healing", icon: "heart.fill", description: "Love, Detox, Intuition frequencies", frequencies: [528, 741, 852]),
+    VibroModeItem(id: "energizing", name: "Energy Boost", icon: "bolt.fill", description: "Beta, Gamma, High Beta waves", frequencies: [20, 40, 100]),
+    VibroModeItem(id: "relaxation", name: "Deep Relaxation", icon: "speaker.wave.2.fill", description: "Alpha, Theta, Delta waves", frequencies: [8, 4, 2]),
+    VibroModeItem(id: "focus", name: "Enhanced Focus", icon: "gearshape.fill", description: "Beta range frequencies", frequencies: [15, 20, 25])
+]
+
 struct VibroacousticSettingsView: View {
     @Environment(VibroacousticStore.self) private var vibroStore
+    @Environment(AuthStore.self) private var authStore
+    @Environment(UserProgressStore.self) private var progressStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedFrequency: Int = 528
+    @State private var selectedChakra: String = "heart"
+    @State private var activeMode: String?
+    @State private var testStopTask: Task<Void, Never>?
+    @State private var showDeleteConfirm: Bool = false
+
+    private let green: Color = Color(hex: "#00ff96")
+    private let dangerRed: Color = Color(hex: "#ff6464")
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Vibroacoustic settings")
-                    .font(.largeTitle.weight(.bold))
-                    .foregroundStyle(.white)
-                HarmoniaStepperRow(title: "Vibro intensity", valueText: vibroStore.intensity.harmoniaPercentString, value: Binding(get: {
-                    vibroStore.intensity
-                }, set: { newValue in
-                    vibroStore.intensity = newValue
-                }), range: 0...1)
-                HarmoniaStepperRow(title: "Haptic sensitivity", valueText: vibroStore.hapticSensitivity.harmoniaPercentString, value: Binding(get: {
-                    vibroStore.hapticSensitivity
-                }, set: { newValue in
-                    vibroStore.hapticSensitivity = newValue
-                }), range: 0...1)
-                HarmoniaStepperRow(title: "Binaural intensity", valueText: vibroStore.binauralIntensity.harmoniaPercentString, value: Binding(get: {
-                    vibroStore.binauralIntensity
-                }, set: { newValue in
-                    vibroStore.setBinauralIntensity(newValue)
-                }), range: 0...1)
-                HarmoniaStepperRow(title: "Isochronic intensity", valueText: vibroStore.isochronicIntensity.harmoniaPercentString, value: Binding(get: {
-                    vibroStore.isochronicIntensity
-                }, set: { newValue in
-                    vibroStore.setIsochronicIntensity(newValue)
-                }), range: 0...1)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                vsHeader
+                if vibroStore.isVibroacousticActive {
+                    vsActiveCard
+                }
+                vsIntensitySection
+                vsHapticSensitivitySection
+                vsModesSection
+                vsSolfeggioSection
+                vsChakraSection
+                vsBinauralSection
+                vsHapticPatternsSection
+                vsDangerZone
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 60)
         }
-        .background(HarmoniaBackgroundView(colors: [Color(hex: "#070A12"), Color(hex: "#0B1022")]))
+        .background(
+            LinearGradient(
+                colors: [Color(hex: "#1a1a2e"), Color(hex: "#16213e"), Color(hex: "#0f3460")],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
         .toolbar(.hidden, for: .navigationBar)
+        .alert("Delete Account", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                vibroStore.stop()
+                progressStore.resetProgress()
+                authStore.clearAuth()
+                progressStore.logout()
+                dismiss()
+            }
+        } message: {
+            Text("This will remove all local data and reset the app. This cannot be undone.")
+        }
+    }
+
+    // MARK: - Header
+
+    private var vsHeader: some View {
+        HStack {
+            Button {
+                HarmoniaHaptics.selection()
+                dismiss()
+            } label: {
+                Image(systemName: "arrow.left")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(.white.opacity(0.1), in: .circle)
+            }
+
+            Spacer()
+
+            Text("Vibroacoustic Settings")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Button {
+                vibroStore.intensity = 0.2
+                vibroStore.hapticSensitivity = 0.8
+                selectedFrequency = 528
+                selectedChakra = "heart"
+                HarmoniaHaptics.selection()
+            } label: {
+                Text("Reset")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(dangerRed)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(dangerRed.opacity(0.2), in: .rect(cornerRadius: 16))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(dangerRed.opacity(0.3), lineWidth: 1)
+                    }
+            }
+        }
+        .padding(.vertical, 16)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(.white.opacity(0.1))
+                .frame(height: 1)
+        }
+    }
+
+    // MARK: - Active Status
+
+    private var vsActiveCard: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(green)
+                .frame(width: 8, height: 8)
+
+            Text("Vibroacoustic Active: \(vibroStore.currentPattern.capitalized)")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(green)
+                .lineLimit(1)
+
+            Spacer()
+
+            Button {
+                vibroStore.stop()
+                activeMode = nil
+                HarmoniaHaptics.selection()
+            } label: {
+                Text("Stop")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(dangerRed)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(dangerRed.opacity(0.2), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(dangerRed.opacity(0.3), lineWidth: 1)
+                    }
+            }
+        }
+        .padding(16)
+        .background(green.opacity(0.1), in: .rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(green.opacity(0.3), lineWidth: 1)
+        }
+    }
+
+    // MARK: - Audio Intensity
+
+    private var vsIntensitySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Audio Intensity")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Control the volume of generated frequencies and binaural beats")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.7))
+                .lineSpacing(4)
+
+            vsSliderCard(label: "Intensity", value: vibroStore.intensity, onChange: { vibroStore.intensity = $0 })
+        }
+    }
+
+    // MARK: - Haptic Sensitivity
+
+    private var vsHapticSensitivitySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Haptic Sensitivity")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Adjust the strength of vibration patterns")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.7))
+                .lineSpacing(4)
+
+            vsSliderCard(label: "Sensitivity", value: vibroStore.hapticSensitivity, onChange: { vibroStore.hapticSensitivity = $0 })
+        }
+    }
+
+    // MARK: - Slider Card
+
+    private func vsSliderCard(label: String, value: Double, onChange: @escaping (Double) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("\(label): \(Int((value * 100).rounded()))%")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+
+            HStack(spacing: 12) {
+                Button {
+                    onChange(max(0, value - 0.1))
+                    HarmoniaHaptics.selection()
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.2), in: .circle)
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(.white.opacity(0.2))
+                            .frame(height: 6)
+                        Capsule()
+                            .fill(green)
+                            .frame(width: max(geo.size.width * value, 2), height: 6)
+                    }
+                    .frame(height: 36)
+                    .contentShape(.rect)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { drag in
+                                let newVal = min(max(drag.location.x / geo.size.width, 0), 1)
+                                let rounded: Double = (Double(newVal) * 10).rounded() / 10.0
+                                onChange(rounded)
+                            }
+                    )
+                }
+                .frame(height: 36)
+
+                Button {
+                    onChange(min(1, value + 0.1))
+                    HarmoniaHaptics.selection()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(.white.opacity(0.2), in: .circle)
+                }
+            }
+        }
+        .padding(16)
+        .background(.white.opacity(0.05), in: .rect(cornerRadius: 16))
+    }
+
+    // MARK: - Vibroacoustic Modes
+
+    private var vsModesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Vibroacoustic Modes")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Test different synchronized audio-haptic experiences")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.7))
+
+            let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(vibroModeData) { mode in
+                    let isActive = activeMode == mode.id && vibroStore.isVibroacousticActive
+                    Button {
+                        toggleMode(mode.id)
+                    } label: {
+                        VStack(spacing: 8) {
+                            Image(systemName: mode.icon)
+                                .font(.system(size: 24))
+                                .foregroundStyle(isActive ? green : .white)
+                            Text(mode.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(isActive ? green : .white)
+                                .multilineTextAlignment(.center)
+                            Text(mode.description)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                            Image(systemName: isActive ? "stop.fill" : "play.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(.white.opacity(0.2), in: .circle)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            isActive ? green.opacity(0.1) : .white.opacity(0.05),
+                            in: .rect(cornerRadius: 16)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(isActive ? green.opacity(0.3) : .white.opacity(0.1), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Solfeggio Frequencies
+
+    private var vsSolfeggioSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Solfeggio Frequencies")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Ancient healing frequencies for transformation and wellness")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.7))
+
+            let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(solfeggioData) { freq in
+                    let isSelected = selectedFrequency == freq.hz
+                    Button {
+                        selectedFrequency = freq.hz
+                        playTestTone(frequency: Double(freq.hz))
+                        HarmoniaHaptics.selection()
+                    } label: {
+                        VStack(spacing: 4) {
+                            Text("\(freq.hz)Hz")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(isSelected ? green : .white)
+                            Text(freq.name)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(isSelected ? green : .white.opacity(0.8))
+                            Text(freq.description)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                                .lineLimit(2)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            isSelected ? green.opacity(0.1) : .white.opacity(0.05),
+                            in: .rect(cornerRadius: 12)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(isSelected ? green.opacity(0.3) : .white.opacity(0.1), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Chakra Frequencies
+
+    private var vsChakraSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Chakra Frequencies")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Balance your energy centers with specific frequencies")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.7))
+
+            let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(chakraData) { chakra in
+                    let isSelected = selectedChakra == chakra.id
+                    Button {
+                        selectedChakra = chakra.id
+                        playTestTone(frequency: Double(chakra.frequency))
+                        HarmoniaHaptics.selection()
+                    } label: {
+                        VStack(spacing: 8) {
+                            Circle()
+                                .fill(Color(hex: chakra.color))
+                                .frame(width: 16, height: 16)
+                            Text(chakra.name)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(isSelected ? green : .white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            Text("\(chakra.frequency)Hz")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            isSelected ? .white.opacity(0.1) : .white.opacity(0.05),
+                            in: .rect(cornerRadius: 12)
+                        )
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(Color(hex: chakra.color), lineWidth: 2)
+                        }
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Binaural Beats
+
+    private var vsBinauralSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Binaural Beats")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Brainwave entrainment for different states of consciousness")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.7))
+
+            VStack(spacing: 12) {
+                ForEach(binauralData) { beat in
+                    HStack(spacing: 12) {
+                        Text("\(beat.beatHz)Hz")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(green)
+                            .frame(width: 60, alignment: .leading)
+
+                        Text(beat.name)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+
+                        Text(beat.description)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Button {
+                            vibroStore.baseFrequency = 200
+                            vibroStore.beatFrequency = Double(beat.beatHz)
+                            vibroStore.start(mode: "binaural")
+                            scheduleAutoStop(seconds: 5)
+                            HarmoniaHaptics.impact()
+                        } label: {
+                            Image(systemName: "testtube.2")
+                                .font(.system(size: 16))
+                                .foregroundStyle(.white)
+                                .frame(width: 24, height: 24)
+                                .background(.white.opacity(0.2), in: .circle)
+                        }
+                    }
+                    .padding(16)
+                    .background(.white.opacity(0.05), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Haptic Patterns
+
+    private var vsHapticPatternsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Haptic Patterns")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+            Text("Test different vibration patterns for various experiences")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.7))
+
+            let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(hapticPatternData) { pattern in
+                    Button {
+                        triggerHapticPattern(pattern.id)
+                    } label: {
+                        VStack(spacing: 8) {
+                            Image(systemName: "iphone.radiowaves.left.and.right")
+                                .font(.system(size: 20))
+                                .foregroundStyle(.white)
+                            Text(pattern.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .multilineTextAlignment(.center)
+                            Text(pattern.description)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.white.opacity(0.6))
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(16)
+                        .frame(maxWidth: .infinity)
+                        .background(.white.opacity(0.05), in: .rect(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                        }
+                    }
+                    .buttonStyle(HarmoniaScaleButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - Danger Zone
+
+    private var vsDangerZone: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Danger Zone")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color(hex: "#ff4d4d"))
+            Text("Deleting your account removes all local data and resets the app.")
+                .font(.system(size: 13))
+                .foregroundStyle(.white.opacity(0.7))
+                .lineSpacing(4)
+
+            Button {
+                showDeleteConfirm = true
+                HarmoniaHaptics.impact()
+            } label: {
+                Text("Delete Account")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color(hex: "#ff4d4d"))
+                    .tracking(0.3)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "#ff4d4d").opacity(0.15), in: .rect(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Color(hex: "#ff4d4d").opacity(0.45), lineWidth: 1)
+                    }
+            }
+            .testID("delete-account-button")
+        }
+        .padding(16)
+        .background(Color(hex: "#ff4d4d").opacity(0.08), in: .rect(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color(hex: "#ff4d4d").opacity(0.25), lineWidth: 1)
+        }
+    }
+
+    // MARK: - Actions
+
+    private func toggleMode(_ modeID: String) {
+        if activeMode == modeID, vibroStore.isVibroacousticActive {
+            vibroStore.stop()
+            activeMode = nil
+        } else {
+            vibroStore.stop()
+            activeMode = modeID
+            vibroStore.start(mode: modeID)
+            scheduleAutoStop(seconds: 10)
+        }
+        HarmoniaHaptics.impact()
+    }
+
+    private func playTestTone(frequency: Double) {
+        vibroStore.stop()
+        vibroStore.baseFrequency = frequency
+        vibroStore.start(mode: "meditation")
+        scheduleAutoStop(seconds: 5)
+    }
+
+    private func scheduleAutoStop(seconds: Int) {
+        testStopTask?.cancel()
+        testStopTask = Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            vibroStore.stop()
+            activeMode = nil
+        }
+    }
+
+    private func triggerHapticPattern(_ patternID: String) {
+        switch patternID {
+        case "meditation_breath":
+            if vibroStore.hapticSensitivity >= 0.5 {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            } else {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            }
+        case "healing_resonance":
+            UISelectionFeedbackGenerator().selectionChanged()
+        default:
+            let style: UIImpactFeedbackGenerator.FeedbackStyle
+            if vibroStore.hapticSensitivity < 0.34 {
+                style = .light
+            } else if vibroStore.hapticSensitivity < 0.67 {
+                style = .medium
+            } else {
+                style = .heavy
+            }
+            UIImpactFeedbackGenerator(style: style).impactOccurred()
+        }
     }
 }
 
