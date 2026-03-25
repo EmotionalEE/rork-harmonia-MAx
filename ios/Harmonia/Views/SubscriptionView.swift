@@ -1,23 +1,16 @@
 import SwiftUI
+import RevenueCat
 
 nonisolated enum SubscriptionPlan: Int, Sendable {
     case annual = 0
     case monthly = 1
 }
 
-nonisolated enum PaymentMethod: String, Sendable {
-    case card
-    case applePay
-}
-
 struct SubscriptionView: View {
-    @Environment(UserProgressStore.self) private var progressStore
+    @Environment(StoreViewModel.self) private var storeVM
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedPlan: SubscriptionPlan = .annual
-    @State private var selectedPayment: PaymentMethod = .applePay
-    @State private var isProcessing: Bool = false
-    @State private var showCardModal: Bool = false
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
     @State private var alertMessage: String = ""
@@ -31,12 +24,33 @@ struct SubscriptionView: View {
     private let textDim = Color(hex: "#F5F7FF").opacity(0.78)
     private let textFaint = Color(hex: "#F5F7FF").opacity(0.58)
 
+    private var annualPackage: Package? {
+        storeVM.offerings?.current?.annual
+    }
+
+    private var monthlyPackage: Package? {
+        storeVM.offerings?.current?.monthly
+    }
+
+    private var selectedPackage: Package? {
+        selectedPlan == .annual ? annualPackage : monthlyPackage
+    }
+
     private var priceText: String {
-        selectedPlan == .annual ? "$79.99/year" : "$9.99/month"
+        if let pkg = selectedPackage {
+            return pkg.storeProduct.localizedPriceString + (selectedPlan == .annual ? "/year" : "/month")
+        }
+        return selectedPlan == .annual ? "$79.99/year" : "$9.99/month"
     }
 
     private var priceSummary: String {
-        selectedPlan == .annual
+        if let pkg = selectedPackage {
+            let price = pkg.storeProduct.localizedPriceString
+            return selectedPlan == .annual
+                ? "Then \(price)/year. Billed yearly. Cancel anytime."
+                : "Then \(price)/month. Billed monthly. Cancel anytime."
+        }
+        return selectedPlan == .annual
             ? "Then $79.99/year. Billed yearly. Cancel anytime."
             : "Then $9.99/month. Billed monthly. Cancel anytime."
     }
@@ -57,7 +71,6 @@ struct SubscriptionView: View {
                     closeBar
                     heroSection
                     planSection
-                    paymentMethodSection
                     trustRow
                     featuresSection
                     legalLinks
@@ -68,22 +81,6 @@ struct SubscriptionView: View {
 
             stickyFooter
         }
-        .sheet(isPresented: $showCardModal) {
-            CardPaymentSheet(
-                selectedPlan: selectedPlan,
-                onSuccess: {
-                    progressStore.activateSubscription()
-                    showCardModal = false
-                    alertTitle = "Welcome to Premium!"
-                    alertMessage = "Your subscription is now active."
-                    showAlert = true
-                }
-            )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationContentInteraction(.scrolls)
-            .presentationBackground(Color(hex: "#0B1022"))
-        }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK") {
                 if alertTitle == "Welcome to Premium!" {
@@ -92,6 +89,13 @@ struct SubscriptionView: View {
             }
         } message: {
             Text(alertMessage)
+        }
+        .onChange(of: storeVM.isPremium) { _, isPremium in
+            if isPremium {
+                alertTitle = "Welcome to Premium!"
+                alertMessage = "Your subscription is now active."
+                showAlert = true
+            }
         }
     }
 
@@ -197,9 +201,19 @@ struct SubscriptionView: View {
                 .foregroundStyle(textColor)
                 .tracking(0.2)
 
-            HStack(spacing: 12) {
-                annualCard
-                monthlyCard
+            if storeVM.isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .tint(.white)
+                    Spacer()
+                }
+                .frame(height: 152)
+            } else {
+                HStack(spacing: 12) {
+                    annualCard
+                    monthlyCard
+                }
             }
         }
         .padding(.horizontal, 18)
@@ -208,6 +222,7 @@ struct SubscriptionView: View {
 
     private var annualCard: some View {
         let isSelected = selectedPlan == .annual
+        let price = annualPackage?.storeProduct.localizedPriceString ?? "$79.99"
         return Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                 selectedPlan = .annual
@@ -237,7 +252,7 @@ struct SubscriptionView: View {
                     .padding(.top, 12)
 
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("$79.99")
+                    Text(price)
                         .font(.system(size: 22, weight: .black))
                         .foregroundStyle(textColor)
                     Text("/year")
@@ -247,9 +262,16 @@ struct SubscriptionView: View {
                 .padding(.top, 4)
 
                 HStack {
-                    Text("$6.67/mo")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(textDim)
+                    if let annualPkg = annualPackage {
+                        let monthly = annualPkg.storeProduct.price / 12
+                        Text("\(monthly.formatted(.currency(code: annualPkg.storeProduct.currencyCode ?? "USD")))/mo")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(textDim)
+                    } else {
+                        Text("$6.67/mo")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(textDim)
+                    }
                     Spacer()
                     selectionIndicator(isSelected: isSelected)
                 }
@@ -277,6 +299,7 @@ struct SubscriptionView: View {
 
     private var monthlyCard: some View {
         let isSelected = selectedPlan == .monthly
+        let price = monthlyPackage?.storeProduct.localizedPriceString ?? "$9.99"
         return Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                 selectedPlan = .monthly
@@ -306,7 +329,7 @@ struct SubscriptionView: View {
                     .padding(.top, 12)
 
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("$9.99")
+                    Text(price)
                         .font(.system(size: 22, weight: .black))
                         .foregroundStyle(textColor)
                     Text("/month")
@@ -359,59 +382,6 @@ struct SubscriptionView: View {
                     .foregroundStyle(bg0)
             }
         }
-    }
-
-    private var paymentMethodSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Pay with")
-                .font(.system(size: 16, weight: .heavy))
-                .foregroundStyle(textColor)
-                .tracking(0.2)
-
-            HStack(spacing: 10) {
-                paymentChip(icon: "creditcard", label: "Card", method: .card)
-                paymentChip(icon: "apple.logo", label: "Apple Pay", method: .applePay)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 20)
-    }
-
-    private func paymentChip(icon: String, label: String, method: PaymentMethod) -> some View {
-        let isSelected = selectedPayment == method
-        return Button {
-            selectedPayment = method
-            HarmoniaHaptics.selection()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(isSelected ? textColor : textDim)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        isSelected ? .white.opacity(0.12) : .white.opacity(0.08),
-                        in: .rect(cornerRadius: 10)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(.white.opacity(isSelected ? 0.16 : 0.12), lineWidth: 1)
-                    }
-                Text(label)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(isSelected ? textColor : textDim)
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 12)
-            .background(
-                isSelected ? teal.opacity(0.14) : .white.opacity(0.06),
-                in: .rect(cornerRadius: 14)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(isSelected ? teal.opacity(0.30) : .white.opacity(0.14), lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     private var trustRow: some View {
@@ -542,27 +512,25 @@ struct SubscriptionView: View {
                     HarmoniaHaptics.impact()
                     handleSubscribe()
                 } label: {
-                    Text(isProcessing ? "Processing…" : "Start free trial")
+                    Text(storeVM.isPurchasing ? "Processing…" : "Start free trial")
                         .font(.system(size: 16, weight: .black))
                         .foregroundStyle(bg0)
                         .tracking(0.2)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                         .background(
-                            isProcessing
+                            storeVM.isPurchasing
                                 ? AnyShapeStyle(LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0.10)], startPoint: .leading, endPoint: .trailing))
                                 : AnyShapeStyle(LinearGradient(colors: [teal, blue], startPoint: .leading, endPoint: .trailing)),
                             in: .rect(cornerRadius: 18)
                         )
                 }
-                .disabled(isProcessing)
+                .disabled(storeVM.isPurchasing || selectedPackage == nil)
                 .buttonStyle(PlanCardButtonStyle())
 
                 Button {
                     HarmoniaHaptics.selection()
-                    alertTitle = "Restore Purchases"
-                    alertMessage = "No previous purchases found (demo)."
-                    showAlert = true
+                    Task { await storeVM.restore() }
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "arrow.counterclockwise")
@@ -583,17 +551,13 @@ struct SubscriptionView: View {
     }
 
     private func handleSubscribe() {
-        if selectedPayment == .card {
-            showCardModal = true
-        } else {
-            isProcessing = true
-            Task {
-                try? await Task.sleep(for: .milliseconds(1200))
-                isProcessing = false
-                progressStore.activateSubscription()
-                HarmoniaHaptics.success()
-                alertTitle = "Welcome to Premium!"
-                alertMessage = "Your subscription is now active."
+        guard let package = selectedPackage else { return }
+        Task {
+            await storeVM.purchase(package: package)
+            if let error = storeVM.error {
+                alertTitle = "Error"
+                alertMessage = error
+                storeVM.error = nil
                 showAlert = true
             }
         }
@@ -601,220 +565,9 @@ struct SubscriptionView: View {
 }
 
 struct PlanCardButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
-    }
-}
-
-struct CardPaymentSheet: View {
-    let selectedPlan: SubscriptionPlan
-    let onSuccess: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var cardholderName: String = ""
-    @State private var cardNumber: String = ""
-    @State private var expiry: String = ""
-    @State private var cvv: String = ""
-    @State private var isProcessing: Bool = false
-
-    private let bg0 = Color(hex: "#070A12")
-    private let textColor = Color(hex: "#F5F7FF")
-    private let textDim = Color(hex: "#F5F7FF").opacity(0.78)
-    private let textFaint = Color(hex: "#F5F7FF").opacity(0.58)
-    private let gold = Color(hex: "#F8C46C")
-
-    private var chargeText: String {
-        selectedPlan == .annual ? "$79.99/year" : "$9.99/month"
-    }
-
-    private var payButtonText: String {
-        selectedPlan == .annual ? "Pay $79.99" : "Pay $9.99"
-    }
-
-    private var isFormValid: Bool {
-        !cardholderName.trimmingCharacters(in: .whitespaces).isEmpty
-        && cardNumber.filter(\.isNumber).count >= 12
-        && expiry.filter(\.isNumber).count == 4
-        && cvv.count >= 3
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    chargeBanner
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        cardField(label: "Cardholder name", text: $cardholderName, placeholder: "Jane Doe")
-
-                        cardField(label: "Card number", text: $cardNumber, placeholder: "1234 5678 9012 3456", keyboardType: .numberPad)
-                            .onChange(of: cardNumber) { _, newValue in
-                                cardNumber = formatCardNumber(newValue)
-                            }
-
-                        HStack(spacing: 12) {
-                            cardField(label: "Expiry", text: $expiry, placeholder: "MM/YY", keyboardType: .numberPad)
-                                .onChange(of: expiry) { _, newValue in
-                                    expiry = formatExpiry(newValue)
-                                }
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("CVV")
-                                    .font(.system(size: 13, weight: .heavy))
-                                    .foregroundStyle(textDim)
-                                SecureField("123", text: $cvv)
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(textColor)
-                                    .keyboardType(.numberPad)
-                                    .padding(.vertical, 12)
-                                    .padding(.horizontal, 12)
-                                    .background(.white.opacity(0.06), in: .rect(cornerRadius: 14))
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 14)
-                                            .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                                    }
-                            }
-                            .onChange(of: cvv) { _, newValue in
-                                if newValue.count > 4 {
-                                    cvv = String(newValue.prefix(4))
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-
-                    Button {
-                        processPayment()
-                    } label: {
-                        Text(isProcessing ? "Processing…" : payButtonText)
-                            .font(.system(size: 15, weight: .black))
-                            .foregroundStyle(bg0)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(
-                                isProcessing
-                                    ? AnyShapeStyle(LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0.10)], startPoint: .leading, endPoint: .trailing))
-                                    : AnyShapeStyle(LinearGradient(colors: [gold, Color(hex: "#FF9D5C")], startPoint: .leading, endPoint: .trailing)),
-                                in: .rect(cornerRadius: 16)
-                            )
-                    }
-                    .disabled(!isFormValid || isProcessing)
-                    .opacity(isFormValid ? 1 : 0.5)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .buttonStyle(PlanCardButtonStyle())
-
-                    Text("Secure payment processing (demo)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(textFaint)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 2)
-                }
-                .padding(.top, 4)
-                .padding(.bottom, 20)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Card details")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(textColor)
-                            .frame(width: 38, height: 38)
-                            .background(.white.opacity(0.08), in: .rect(cornerRadius: 14))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-                            }
-                    }
-                }
-            }
-            .toolbarColorScheme(.dark, for: .navigationBar)
-        }
-    }
-
-    private var chargeBanner: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(gold.opacity(0.95))
-                    .frame(width: 28, height: 28)
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Color(hex: "#070A12"))
-            }
-            Text("You'll be charged after your 7-day free trial: \(chargeText).")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(textDim)
-                .lineSpacing(2)
-        }
-        .padding(12)
-        .background(.white.opacity(0.06), in: .rect(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private func cardField(label: String, text: Binding<String>, placeholder: String, keyboardType: UIKeyboardType = .default) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.system(size: 13, weight: .heavy))
-                .foregroundStyle(textDim)
-            TextField(placeholder, text: text)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(textColor)
-                .keyboardType(keyboardType)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(keyboardType == .numberPad ? .never : .words)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 12)
-                .background(.white.opacity(0.06), in: .rect(cornerRadius: 14))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14)
-                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                }
-        }
-    }
-
-    private func formatCardNumber(_ input: String) -> String {
-        let digits = input.filter(\.isNumber)
-        let limited = String(digits.prefix(16))
-        var result = ""
-        for (index, char) in limited.enumerated() {
-            if index > 0, index % 4 == 0 { result += " " }
-            result.append(char)
-        }
-        return result
-    }
-
-    private func formatExpiry(_ input: String) -> String {
-        let digits = input.filter(\.isNumber)
-        let limited = String(digits.prefix(4))
-        if limited.count > 2 {
-            return String(limited.prefix(2)) + "/" + String(limited.dropFirst(2))
-        }
-        return limited
-    }
-
-    private func processPayment() {
-        isProcessing = true
-        Task {
-            try? await Task.sleep(for: .milliseconds(1200))
-            isProcessing = false
-            HarmoniaHaptics.success()
-            cardholderName = ""
-            cardNumber = ""
-            expiry = ""
-            cvv = ""
-            onSuccess()
-        }
     }
 }
