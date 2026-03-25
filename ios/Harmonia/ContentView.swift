@@ -1653,7 +1653,7 @@ struct HomeView: View {
                     .font(.title3)
                     .foregroundStyle(Color(hex: "#F8C46C"))
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Chat about your feelings")
+                    Text("Wellness Companion")
                         .font(.headline)
                         .foregroundStyle(.white)
                     Text("A gentle check-in, powered by AI")

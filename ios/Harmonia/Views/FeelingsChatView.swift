@@ -97,11 +97,11 @@ struct FeelingsChatView: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("Feelings")
+                Text("Wellness Companion")
                     .font(.system(size: 16, weight: .heavy))
                     .foregroundStyle(textColor)
                     .tracking(0.2)
-                Text("A deeper check-in")
+                Text("Reflect, release, and re-center")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(textDim)
             }
