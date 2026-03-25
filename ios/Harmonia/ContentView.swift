@@ -1231,18 +1231,6 @@ struct WelcomeView: View {
                         .foregroundStyle(.white.opacity(0.76))
                     }
 
-                    Button {
-                        authStore.demoLogin()
-                        progressStore.completeWelcome()
-                        onSuccess()
-                    } label: {
-                        Text("Continue with demo")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    }
-                    .buttonStyle(HarmoniaGlassButtonStyle())
-                    .testID("demo-login")
                 }
                 .padding(20)
                 .background(.ultraThinMaterial, in: .rect(cornerRadius: 26))
