@@ -1016,9 +1016,15 @@ struct ContentView: View {
                 path.append(AppRoute.endReflection(completedSessionID))
             }
         case .endReflection(let sessionID):
-            EndReflectionView(sessionID: sessionID) { context in
-                path.append(AppRoute.feelingsChat(context))
-            }
+            EndReflectionView(
+                sessionID: sessionID,
+                onExit: {
+                    path = NavigationPath()
+                },
+                onDeepen: { context in
+                    path.append(AppRoute.feelingsChat(context))
+                }
+            )
         case .feelingsChat(let context):
             FeelingsChatView(context: context)
         case .insights:
@@ -2772,11 +2778,11 @@ struct IsochronicControlsView: View {
 struct EndReflectionView: View {
     @Environment(UserProgressStore.self) private var progressStore
     let sessionID: String
+    let onExit: () -> Void
     let onDeepen: (FeelingsChatContext) -> Void
 
     @State private var sliderValue: Double = 0
     @State private var journalText: String = ""
-    @State private var savedEntry: ReflectionEntry?
 
     private var session: Session? {
         resolveSession(id: sessionID)
@@ -2788,6 +2794,20 @@ struct EndReflectionView: View {
                 .ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    HStack {
+                        Spacer()
+                        Button {
+                            onExit()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.headline.weight(.semibold))
+                                .foregroundStyle(.black.opacity(0.82))
+                                .frame(width: 44, height: 44)
+                                .background(.white.opacity(0.72), in: .circle)
+                        }
+                        .buttonStyle(HarmoniaScaleButtonStyle())
+                    }
+
                     if let session {
                         Text("Completed: \(session.title)")
                             .font(.headline)
@@ -2835,7 +2855,9 @@ struct EndReflectionView: View {
                 }
                 .buttonStyle(HarmoniaGlassButtonStyle(light: true))
                 Button("Save reflection") {
-                    savedEntry = progressStore.addReflectionEntry(sessionId: session.id, sessionName: session.title, sliderValue: sliderValue, journalText: journalText.isEmpty ? nil : journalText, microLabel: microLabel)
+                    _ = progressStore.addReflectionEntry(sessionId: session.id, sessionName: session.title, sliderValue: sliderValue, journalText: journalText.isEmpty ? nil : journalText, microLabel: microLabel)
+                    HarmoniaHaptics.success()
+                    onExit()
                 }
                 .buttonStyle(HarmoniaPrimaryButtonStyle(colors: [Color(hex: "#5237D6"), Color(hex: "#8836E2")]))
             }
