@@ -4347,22 +4347,220 @@ struct EmotionIconView: View {
     let size: CGFloat
 
     var body: some View {
-        Image(systemName: iconName)
-            .font(.system(size: size, weight: .semibold))
-            .foregroundStyle(color)
+        Canvas { context, canvasSize in
+            let scale: CGFloat = canvasSize.width / 24
+            let c: CGPoint = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+            switch emotionID {
+            case "anxious":
+                drawAnxious(context: context, center: c, scale: scale)
+            case "stressed":
+                drawStressed(context: context, center: c, scale: scale)
+            case "sad":
+                drawSad(context: context, center: c, scale: scale)
+            case "angry":
+                drawAngry(context: context, center: c, scale: scale)
+            case "calm":
+                drawCalm(context: context, center: c, scale: scale)
+            case "happy":
+                drawHappy(context: context, center: c, scale: scale)
+            case "inspired":
+                drawInspired(context: context, center: c, scale: scale)
+            case "energized":
+                drawEnergized(context: context, center: c, scale: scale)
+            default:
+                drawFallback(context: context, center: c, scale: scale)
+            }
+        }
+        .frame(width: size, height: size)
     }
 
-    private var iconName: String {
-        switch emotionID {
-        case "anxious": return "circle.hexagongrid.fill"
-        case "stressed": return "triangle.fill"
-        case "sad": return "moon.stars.fill"
-        case "angry": return "bolt.fill"
-        case "calm": return "circle.dotted"
-        case "happy": return "sun.max.fill"
-        case "inspired": return "sparkles"
-        default: return "figure.run.circle.fill"
+    private func stroke(_ width: CGFloat, opacity: Double = 0.95) -> StrokeStyle {
+        StrokeStyle(lineWidth: width)
+    }
+
+    private func circlePath(center: CGPoint, radius: CGFloat) -> Path {
+        Path { p in p.addEllipse(in: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)) }
+    }
+
+    private func polygonPath(center: CGPoint, points: [(CGFloat, CGFloat)], scale: CGFloat) -> Path {
+        Path { p in
+            for (i, pt) in points.enumerated() {
+                let x = pt.0 * scale; let y = pt.1 * scale
+                if i == 0 { p.move(to: CGPoint(x: x, y: y)) } else { p.addLine(to: CGPoint(x: x, y: y)) }
+            }
+            p.closeSubpath()
         }
+    }
+
+    private func diamondPath(cx: CGFloat, cy: CGFloat, s: CGFloat) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: cx, y: cy - s))
+            p.addLine(to: CGPoint(x: cx + s, y: cy))
+            p.addLine(to: CGPoint(x: cx, y: cy + s))
+            p.addLine(to: CGPoint(x: cx - s, y: cy))
+            p.closeSubpath()
+        }
+    }
+
+    private func drawAnxious(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        context.stroke(circlePath(center: center, radius: 9.5 * s), with: .color(color.opacity(0.95)), lineWidth: 1.5 * s)
+        context.stroke(circlePath(center: center, radius: 5 * s), with: .color(color.opacity(0.95)), lineWidth: 1 * s)
+        let diamond = polygonPath(center: center, points: [(12, 4), (16, 8), (12, 12), (8, 8)], scale: s)
+        context.stroke(diamond, with: .color(color.opacity(0.95)), lineWidth: 1 * s)
+        context.stroke(circlePath(center: center, radius: 13.5 * s), with: .color(color.opacity(0.12)), lineWidth: 0.6 * s)
+        for i in 0..<4 {
+            let angle = Double(i * 90) * .pi / 180
+            let r: CGFloat = 12.2 * s
+            let sp: CGFloat = 1.4 * s
+            let cx = center.x + cos(angle) * r
+            let cy = center.y + sin(angle) * r
+            context.fill(diamondPath(cx: cx, cy: cy, s: sp), with: .color(color.opacity(0.6)))
+        }
+    }
+
+    private func drawStressed(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        let tri = polygonPath(center: center, points: [(12, 2), (22, 20), (2, 20)], scale: s)
+        context.stroke(tri, with: .color(color.opacity(0.95)), lineWidth: 1.6 * s)
+        context.stroke(circlePath(center: CGPoint(x: 12 * s, y: 14 * s), radius: 3.6 * s), with: .color(color.opacity(0.95)), lineWidth: 1 * s)
+        let diamond = polygonPath(center: center, points: [(12, 8), (15, 11), (12, 14), (9, 11)], scale: s)
+        context.stroke(diamond, with: .color(color.opacity(0.95)), lineWidth: 1 * s)
+        var dash = Path()
+        dash.move(to: CGPoint(x: 4 * s, y: 6 * s))
+        dash.addLine(to: CGPoint(x: 20 * s, y: 6 * s))
+        context.stroke(dash, with: .color(color.opacity(0.25)), style: StrokeStyle(lineWidth: 0.8 * s, dash: [3 * s, 2 * s]))
+        context.stroke(circlePath(center: center, radius: 13.5 * s), with: .color(color.opacity(0.12)), lineWidth: 0.6 * s)
+    }
+
+    private func drawSad(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        for i in 0..<3 {
+            let r = CGFloat(4 + i * 3) * s
+            let w = (0.6 + Double(i) * 0.2) * s
+            if i % 2 == 0 {
+                context.stroke(circlePath(center: center, radius: r), with: .color(color.opacity(0.85)), style: StrokeStyle(lineWidth: w, dash: [3 * s, 2 * s]))
+            } else {
+                context.stroke(circlePath(center: center, radius: r), with: .color(color.opacity(0.85)), lineWidth: w)
+            }
+        }
+        for i in 0..<6 {
+            let angle = Double(i) * .pi / 3
+            let cx = center.x + 5.2 * s * cos(angle)
+            let cy = center.y + 5.2 * s * sin(angle)
+            context.stroke(circlePath(center: CGPoint(x: cx, y: cy), radius: 4.8 * s), with: .color(color.opacity(0.18)), lineWidth: 0.6 * s)
+        }
+        let triUp = polygonPath(center: center, points: [(12, 8), (14, 13), (10, 13)], scale: s)
+        context.stroke(triUp, with: .color(color.opacity(0.75)), lineWidth: 0.8 * s)
+        let triDown = polygonPath(center: center, points: [(12, 16), (14, 11), (10, 11)], scale: s)
+        context.stroke(triDown, with: .color(color.opacity(0.6)), lineWidth: 0.8 * s)
+        context.fill(circlePath(center: center, radius: 1.1 * s), with: .color(color))
+        for i in 0..<4 {
+            let angle = Double(i * 90 + 45) * .pi / 180
+            var ray = Path()
+            ray.move(to: CGPoint(x: center.x + cos(angle) * 7 * s, y: center.y + sin(angle) * 7 * s))
+            ray.addLine(to: CGPoint(x: center.x + cos(angle) * 9.5 * s, y: center.y + sin(angle) * 9.5 * s))
+            context.stroke(ray, with: .color(color.opacity(0.25)), lineWidth: 0.8 * s)
+        }
+    }
+
+    private func drawAngry(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        let hex = polygonPath(center: center, points: [(12, 2), (20, 8), (20, 16), (12, 22), (4, 16), (4, 8)], scale: s)
+        context.stroke(hex, with: .color(color.opacity(0.95)), lineWidth: 1.6 * s)
+        let diamond = polygonPath(center: center, points: [(12, 6), (16, 10), (12, 14), (8, 10)], scale: s)
+        context.stroke(diamond, with: .color(color.opacity(0.95)), lineWidth: 1.1 * s)
+        for i in 0..<6 {
+            let angle = Double(i * 60) * .pi / 180
+            var ray = Path()
+            ray.move(to: CGPoint(x: center.x + cos(angle) * 6.5 * s, y: center.y + sin(angle) * 6.5 * s))
+            ray.addLine(to: CGPoint(x: center.x + cos(angle) * 10.5 * s, y: center.y + sin(angle) * 10.5 * s))
+            context.stroke(ray, with: .color(color.opacity(0.35)), lineWidth: 1 * s)
+        }
+    }
+
+    private func drawCalm(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        context.stroke(circlePath(center: center, radius: 10.8 * s), with: .color(color.opacity(0.95)), lineWidth: 1.5 * s)
+        context.stroke(circlePath(center: center, radius: 7 * s), with: .color(color.opacity(0.95)), lineWidth: 1 * s)
+        context.stroke(circlePath(center: center, radius: 2.4 * s), with: .color(color.opacity(0.95)), lineWidth: 1 * s)
+        context.stroke(circlePath(center: center, radius: 13.5 * s), with: .color(color.opacity(0.12)), lineWidth: 0.6 * s)
+        for i in 0..<12 {
+            let angle = Double(i * 30) * .pi / 180
+            var tick = Path()
+            tick.move(to: CGPoint(x: center.x + cos(angle) * 8.5 * s, y: center.y + sin(angle) * 8.5 * s))
+            tick.addLine(to: CGPoint(x: center.x + cos(angle) * 9.5 * s, y: center.y + sin(angle) * 9.5 * s))
+            context.stroke(tick, with: .color(color.opacity(0.2)), lineWidth: 0.8 * s)
+        }
+    }
+
+    private func drawHappy(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        for i in 0..<8 {
+            let angle = Double(i * 45) * .pi / 180
+            var ray = Path()
+            ray.move(to: CGPoint(x: center.x + cos(angle) * 6.8 * s, y: center.y + sin(angle) * 6.8 * s))
+            ray.addLine(to: CGPoint(x: center.x + cos(angle) * 11.2 * s, y: center.y + sin(angle) * 11.2 * s))
+            context.stroke(ray, with: .color(color.opacity(0.95)), lineWidth: 1.1 * s)
+        }
+        context.stroke(circlePath(center: center, radius: 4.5 * s), with: .color(color.opacity(0.95)), lineWidth: 1.5 * s)
+        for i in 0..<6 {
+            let angle = Double(i * 60) * .pi / 180
+            let r: CGFloat = 13 * s
+            let dotCenter = CGPoint(x: center.x + cos(angle) * r, y: center.y + sin(angle) * r)
+            context.fill(circlePath(center: dotCenter, radius: 0.6 * s), with: .color(color.opacity(0.7)))
+        }
+    }
+
+    private func drawInspired(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        for i in 0..<12 {
+            let angle = Double(i * 30) * .pi / 180
+            let inner: CGFloat = 2.6 * s
+            let isLong = i % 2 == 0
+            let outer: CGFloat = (isLong ? 12.4 : 9.2) * s
+            let w = (isLong ? 1.3 : 0.9) * s
+            let op = isLong ? 0.95 : 0.7
+            var ray = Path()
+            ray.move(to: CGPoint(x: center.x + cos(angle) * inner, y: center.y + sin(angle) * inner))
+            ray.addLine(to: CGPoint(x: center.x + cos(angle) * outer, y: center.y + sin(angle) * outer))
+            context.stroke(ray, with: .color(color.opacity(op)), lineWidth: w)
+        }
+        context.stroke(circlePath(center: center, radius: 3.6 * s), with: .color(color.opacity(0.95)), lineWidth: 1.5 * s)
+        let star = polygonPath(center: center, points: [(12, 9.6), (12.8, 11.2), (14.4, 12), (12.8, 12.8), (12, 14.4), (11.2, 12.8), (9.6, 12), (11.2, 11.2)], scale: s)
+        context.stroke(star, with: .color(color.opacity(0.95)), lineWidth: 1 * s)
+        context.fill(circlePath(center: center, radius: 1 * s), with: .color(color))
+        context.stroke(circlePath(center: center, radius: 14 * s), with: .color(color.opacity(0.12)), lineWidth: 0.6 * s)
+        for i in 0..<8 {
+            let angle = Double(i * 45) * .pi / 180
+            let r: CGFloat = 13.4 * s
+            let sp: CGFloat = 1.6 * s
+            let cx = center.x + cos(angle) * r
+            let cy = center.y + sin(angle) * r
+            context.fill(diamondPath(cx: cx, cy: cy, s: sp), with: .color(color.opacity(0.85)))
+        }
+    }
+
+    private func drawEnergized(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        let outerHex = polygonPath(center: center, points: [(12, 2), (18, 8), (18, 16), (12, 22), (6, 16), (6, 8)], scale: s)
+        context.stroke(outerHex, with: .color(color.opacity(0.95)), lineWidth: 1.6 * s)
+        let innerHex = polygonPath(center: center, points: [(12, 6), (15, 9), (15, 15), (12, 18), (9, 15), (9, 9)], scale: s)
+        context.stroke(innerHex, with: .color(color.opacity(0.95)), lineWidth: 1.1 * s)
+        context.fill(circlePath(center: center, radius: 2.2 * s), with: .color(color))
+        for i in 0..<8 {
+            let angle = Double(i * 45) * .pi / 180
+            var ray = Path()
+            ray.move(to: CGPoint(x: center.x + cos(angle) * 5.5 * s, y: center.y + sin(angle) * 5.5 * s))
+            ray.addLine(to: CGPoint(x: center.x + cos(angle) * 11.5 * s, y: center.y + sin(angle) * 11.5 * s))
+            context.stroke(ray, with: .color(color.opacity(0.4)), lineWidth: 1.1 * s)
+        }
+    }
+
+    private func drawFallback(context: GraphicsContext, center: CGPoint, scale: CGFloat) {
+        let s = scale
+        context.stroke(circlePath(center: center, radius: 10 * s), with: .color(color.opacity(0.95)), lineWidth: 1.5 * s)
+        context.stroke(circlePath(center: center, radius: 13.5 * s), with: .color(color.opacity(0.12)), lineWidth: 0.6 * s)
     }
 }
 
