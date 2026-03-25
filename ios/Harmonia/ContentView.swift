@@ -695,14 +695,14 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         }
 
         let isDropboxHost: Bool = components.host == "www.dropbox.com" || components.host == "dropbox.com" || components.host == "dl.dropboxusercontent.com"
-        if components.host == "www.dropbox.com" || components.host == "dropbox.com" {
-            components.host = "dl.dropboxusercontent.com"
-        }
 
         if isDropboxHost {
             let filteredItems: [URLQueryItem] = (components.queryItems ?? []).filter { item in
-                item.name.caseInsensitiveCompare("dl") != .orderedSame && item.name.caseInsensitiveCompare("raw") != .orderedSame
+                let key: String = item.name.lowercased()
+                return key != "dl" && key != "raw" && key != "st"
             }
+            // Keep the original Dropbox host: `/scl/fi/...` links are signed for that host and
+            // can fail if rewritten, but they consistently support `raw=1` for direct playback.
             components.queryItems = filteredItems + [URLQueryItem(name: "raw", value: "1")]
         }
 
