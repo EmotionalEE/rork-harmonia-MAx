@@ -1,0 +1,55 @@
+name: iOS CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    paths:
+      - "ios/**"
+      - ".github/workflows/ios-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Resolve simulator destination
+        id: simulator
+        run: |
+          set -euo pipefail
+
+          DEVICE_NAME="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ {print $1; exit}' | sed 's/[[:space:]]*$//')"
+          if [[ -z "${DEVICE_NAME}" ]]; then
+            echo "Unable to find an available iPhone simulator."
+            exit 1
+          fi
+
+          echo "Using simulator: ${DEVICE_NAME}"
+          echo "destination=platform=iOS Simulator,name=${DEVICE_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build
+        run: |
+          xcodebuild \
+            -project ios/Harmonia.xcodeproj \
+            -scheme Harmonia \
+            -destination "${{ steps.simulator.outputs.destination }}" \
+            build
+
+      - name: Test
+        run: |
+          xcodebuild \
+            -project ios/Harmonia.xcodeproj \
+            -scheme Harmonia \
+            -destination "${{ steps.simulator.outputs.destination }}" \
+            test
