@@ -4974,46 +4974,7 @@ struct InsightStatCard: View {
     }
 }
 
-struct SubscriptionView: View {
-    @Environment(UserProgressStore.self) private var progressStore
-    @State private var selectedPlan: Int = 0
 
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(spacing: 8) {
-                        HarmoniaPill(text: "Rork Max")
-                        HarmoniaPill(text: "Cancel anytime")
-                    }
-                    Text("Upgrade to Rork Max")
-                        .font(.largeTitle.weight(.bold))
-                        .foregroundStyle(.white)
-                    Text("Deeper sessions, smarter insights, and faster AI guidance.")
-                        .font(.body)
-                        .foregroundStyle(.white.opacity(0.72))
-                    Picker("Plan", selection: $selectedPlan) {
-                        Text("$79.99/year").tag(0)
-                        Text("$9.99/month").tag(1)
-                    }
-                    .pickerStyle(.segmented)
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(["Unlimited access to all sessions", "Advanced theta wave frequencies", "Personalized recommendations", "Offline mode", "Progress tracking & insights", "Ad-free experience"], id: \.self) { feature in
-                            Label(feature, systemImage: "checkmark.circle.fill")
-                                .foregroundStyle(.white)
-                        }
-                    }
-                    Button("Start free trial") {
-                        progressStore.activateSubscription()
-                    }
-                    .buttonStyle(HarmoniaPrimaryButtonStyle(colors: [Color(hex: "#F8C46C"), Color(hex: "#1FD6C1")]))
-                }
-                .padding(20)
-            }
-            .background(HarmoniaBackgroundView(colors: [Color(hex: "#070A12"), Color(hex: "#0B1022")]))
-        }
-    }
-}
 
 struct TermsView: View {
     var body: some View {
