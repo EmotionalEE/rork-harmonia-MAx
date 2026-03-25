@@ -499,9 +499,9 @@ struct SubscriptionView: View {
             .frame(height: 40)
             .allowsHitTesting(false)
 
-            VStack(spacing: 10) {
-                VStack(spacing: 4) {
-                    Text("7-day free trial")
+            VStack(spacing: 6) {
+                VStack(spacing: 2) {
+                    Text("3-day free trial")
                         .font(.system(size: 14, weight: .black))
                         .foregroundStyle(textColor)
                     Text(priceSummary)
@@ -520,7 +520,7 @@ struct SubscriptionView: View {
                         .foregroundStyle(bg0)
                         .tracking(0.2)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 12)
                         .background(
                             storeVM.isPurchasing
                                 ? AnyShapeStyle(LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0.10)], startPoint: .leading, endPoint: .trailing))
@@ -543,12 +543,12 @@ struct SubscriptionView: View {
                             .font(.system(size: 13, weight: .heavy))
                             .foregroundStyle(textFaint)
                     }
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 6)
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.top, 10)
-            .padding(.bottom, 10)
+            .padding(.top, 6)
+            .padding(.bottom, 6)
             .background(Color(hex: "#070A12").opacity(0.98))
         }
     }
