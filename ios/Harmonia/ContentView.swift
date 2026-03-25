@@ -3405,79 +3405,45 @@ struct JournalEntryView: View {
             .allowsHitTesting(false)
 
             VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    Button {
-                        onDeepen(FeelingsChatContext(
-                            id: UUID().uuidString,
-                            source: "journal-entry",
-                            sessionId: nil,
-                            sessionName: nil,
-                            feelingDelta: shiftMicroLabel,
-                            feelingScore: progress * 100,
-                            dateISO: date,
-                            userNote: String(note.prefix(140))
-                        ))
-                    } label: {
-                        Label("Deepen", systemImage: "message")
-                            .font(.system(size: 14, weight: .black))
-                            .foregroundStyle(jc.textDim)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(.white.opacity(0.06), in: .rect(cornerRadius: 18))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 18)
-                                    .strokeBorder(jc.stroke, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(HarmoniaScaleButtonStyle())
-
-                    Button {
-                        dismiss()
-                    } label: {
-                        Label("Cancel", systemImage: "xmark")
-                            .font(.system(size: 14, weight: .black))
-                            .foregroundStyle(jc.textDim)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .background(.white.opacity(0.06), in: .rect(cornerRadius: 18))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 18)
-                                    .strokeBorder(jc.stroke, lineWidth: 1)
-                            }
-                    }
-                    .buttonStyle(HarmoniaScaleButtonStyle())
-
-                    Button {
-                        isSaving = true
-                        journalStore.upsertEntry(JournalEntry(date: date, emotion: emotion.isEmpty ? "calm" : emotion, progress: progress, note: note.isEmpty ? nil : note))
-                        HarmoniaHaptics.success()
-                        dismiss()
-                    } label: {
-                        Group {
-                            if isSaving {
-                                ProgressView()
-                                    .tint(Color(hex: "#0D0907"))
-                            } else {
-                                Label("Save reflection", systemImage: "checkmark")
-                                    .font(.system(size: 14, weight: .black))
-                                    .foregroundStyle(Color(hex: "#0D0907"))
-                            }
+                Button {
+                    isSaving = true
+                    journalStore.upsertEntry(JournalEntry(date: date, emotion: emotion.isEmpty ? "calm" : emotion, progress: progress, note: note.isEmpty ? nil : note))
+                    HarmoniaHaptics.success()
+                    dismiss()
+                } label: {
+                    Group {
+                        if isSaving {
+                            ProgressView()
+                                .tint(Color(hex: "#0D0907"))
+                        } else {
+                            Label("Save reflection", systemImage: "checkmark")
+                                .font(.system(size: 16, weight: .black))
+                                .foregroundStyle(Color(hex: "#0D0907"))
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            LinearGradient(
-                                colors: isSaving ? [.white.opacity(0.14), .white.opacity(0.10)] : [Color(hex: "#E8A54B"), Color(hex: "#D4885A")],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            in: .rect(cornerRadius: 18)
-                        )
                     }
-                    .buttonStyle(HarmoniaScaleButtonStyle())
                     .frame(maxWidth: .infinity)
-                    .layoutPriority(1)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(
+                            colors: isSaving ? [.white.opacity(0.14), .white.opacity(0.10)] : [Color(hex: "#E8A54B"), Color(hex: "#D4885A")],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: .rect(cornerRadius: 18)
+                    )
                 }
+                .buttonStyle(HarmoniaScaleButtonStyle())
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Discard")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(jc.textFaint)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                }
+                .buttonStyle(HarmoniaScaleButtonStyle())
 
                 Text("Tip: honest notes make your insights more accurate.")
                     .font(.system(size: 12, weight: .bold))
