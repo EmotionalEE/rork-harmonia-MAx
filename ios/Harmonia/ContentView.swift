@@ -1558,12 +1558,12 @@ struct HomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Spacer()
                 Button(action: onOpenSubscription) {
                     Label("Premium", systemImage: "crown.fill")
                 }
                 .buttonStyle(HarmoniaCapsuleButtonStyle())
                 .testID("subscription-open")
+                Spacer()
                 Button(action: onOpenProfile) {
                     Image(systemName: "person.crop.circle")
                         .font(.title3)
