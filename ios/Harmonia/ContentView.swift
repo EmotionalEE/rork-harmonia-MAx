@@ -451,7 +451,7 @@ final class JournalStore {
 
 @MainActor
 @Observable
-final class AudioStore: NSObject, AVAudioPlayerDelegate {
+final class AudioStore {
     var isPlaying: Bool = false
     var isPreparing: Bool = false
     var currentSessionID: String?
@@ -460,16 +460,15 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
     var volume: Double = 0.8
     var errorMessage: String?
 
-    private var player: AVAudioPlayer?
+    private var player: AVPlayer?
     private var prepareTask: Task<Void, Never>?
-    private var progressTask: Task<Void, Never>?
     private var pendingAutoPlay: Bool = false
     private var deferredSeekTime: Double?
     private var loadID: UUID = UUID()
-
-    override init() {
-        super.init()
-    }
+    private var timeObserver: Any?
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var timeControlObservation: NSKeyValueObservation?
+    private var endObserver: NSObjectProtocol?
 
     func preload(session: Session) {
         prepare(session: session, autoplay: false, forceReload: false)
@@ -496,7 +495,6 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
     func pause() {
         pendingAutoPlay = false
         player?.pause()
-        stopProgressUpdates()
         syncPlaybackState()
     }
 
@@ -508,6 +506,7 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         isPlaying = false
         currentSessionID = nil
         currentTime = 0
+        errorMessage = nil
         teardownPlayer()
         deactivateAudioSession()
     }
@@ -517,7 +516,11 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         let clampedTime: Double = min(max(0, seconds), playableDuration)
         currentTime = clampedTime
         deferredSeekTime = clampedTime
-        player?.currentTime = clampedTime
+        guard let player else {
+            return
+        }
+        let targetTime: CMTime = CMTime(seconds: clampedTime, preferredTimescale: 600)
+        player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     func skip(by seconds: Double) {
@@ -538,8 +541,12 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         if currentSessionID == session.id, let player, !forceReload {
             errorMessage = nil
             pendingAutoPlay = pendingAutoPlay || autoplay
-            duration = player.duration > 0 ? player.duration : duration
-            currentTime = player.currentTime
+            if let resolvedDuration: Double = Self.resolvedDuration(from: player.currentItem) {
+                duration = resolvedDuration
+            }
+            if let resolvedCurrentTime: Double = Self.resolvedCurrentTime(from: player) {
+                currentTime = resolvedCurrentTime
+            }
             player.volume = Float(volume)
             if autoplay {
                 startPlayback(using: player)
@@ -556,8 +563,11 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
             return
         }
 
+        let previousSessionID: String? = currentSessionID
         prepareTask?.cancel()
-        stopProgressUpdates()
+        if previousSessionID != session.id || forceReload {
+            teardownPlayer()
+        }
 
         currentSessionID = session.id
         duration = Double(session.duration * 60)
@@ -570,12 +580,10 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         loadID = UUID()
         let currentLoadID: UUID = loadID
 
-        if forceReload {
-            teardownPlayer()
-        }
-
         prepareTask = Task { [weak self] in
-            guard let self else { return }
+            guard let self else {
+                return
+            }
 
             do {
                 let localURL: URL = try await Self.cachedAudioURL(from: remoteURL, forceRefresh: forceReload)
@@ -583,18 +591,18 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
                     return
                 }
 
-                let player: AVAudioPlayer = try AVAudioPlayer(contentsOf: localURL)
-                player.delegate = self
+                let item: AVPlayerItem = AVPlayerItem(url: localURL)
+                let player: AVPlayer = AVPlayer(playerItem: item)
                 player.volume = Float(self.volume)
-                player.prepareToPlay()
-
                 self.player = player
-                self.duration = player.duration > 0 ? player.duration : self.duration
+                self.configureObservers(for: player, item: item, sessionID: session.id)
+
                 let targetTime: Double = min(self.deferredSeekTime ?? 0, self.duration)
                 self.currentTime = targetTime
-                player.currentTime = targetTime
-                self.isPreparing = false
-                self.errorMessage = nil
+                if targetTime > 0 {
+                    let time: CMTime = CMTime(seconds: targetTime, preferredTimescale: 600)
+                    await player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+                }
 
                 if self.pendingAutoPlay {
                     self.startPlayback(using: player)
@@ -614,37 +622,126 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    private func startPlayback(using player: AVAudioPlayer) {
+    private func configureObservers(for player: AVPlayer, item: AVPlayerItem, sessionID: String) {
+        let interval: CMTime = CMTime(seconds: 0.25, preferredTimescale: 600)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.refreshPlaybackMetrics()
+            }
+        }
+
+        itemStatusObservation = item.observe(\.status, options: [.initial, .new]) { item, _ in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.handleItemStatusChange(item, sessionID: sessionID)
+            }
+        }
+
+        timeControlObservation = player.observe(\.timeControlStatus, options: [.initial, .new]) { player, _ in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.handleTimeControlStatusChange(player, sessionID: sessionID)
+            }
+        }
+
+        endObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+                self.handlePlaybackFinished(sessionID: sessionID)
+            }
+        }
+    }
+
+    private func handleItemStatusChange(_ item: AVPlayerItem, sessionID: String) {
+        guard currentSessionID == sessionID else {
+            return
+        }
+
+        switch item.status {
+        case .readyToPlay:
+            if let resolvedDuration: Double = Self.resolvedDuration(from: item) {
+                duration = resolvedDuration
+            }
+            errorMessage = nil
+            if pendingAutoPlay, let player {
+                player.play()
+            }
+            syncPlaybackState()
+        case .failed:
+            isPreparing = false
+            isPlaying = false
+            pendingAutoPlay = false
+            errorMessage = item.error?.localizedDescription ?? "We couldn't play this session audio."
+        case .unknown:
+            if pendingAutoPlay {
+                isPreparing = true
+            }
+        @unknown default:
+            isPreparing = false
+            isPlaying = false
+            errorMessage = "We couldn't prepare this session audio."
+        }
+    }
+
+    private func handleTimeControlStatusChange(_ player: AVPlayer, sessionID: String) {
+        guard currentSessionID == sessionID else {
+            return
+        }
+
+        switch player.timeControlStatus {
+        case .playing:
+            isPreparing = false
+            isPlaying = true
+            errorMessage = nil
+        case .waitingToPlayAtSpecifiedRate:
+            isPreparing = true
+            isPlaying = false
+        case .paused:
+            isPlaying = false
+            isPreparing = pendingAutoPlay && player.currentItem?.status != .readyToPlay
+        @unknown default:
+            isPlaying = false
+            isPreparing = false
+        }
+    }
+
+    private func handlePlaybackFinished(sessionID: String) {
+        guard currentSessionID == sessionID else {
+            return
+        }
+        pendingAutoPlay = false
+        currentTime = duration
+        isPlaying = false
+        isPreparing = false
+    }
+
+    private func startPlayback(using player: AVPlayer) {
         do {
             try activateAudioSession()
-            if player.play() {
-                errorMessage = nil
+            pendingAutoPlay = true
+            player.play()
+            errorMessage = nil
+            if player.currentItem?.status == .readyToPlay {
                 isPreparing = false
                 isPlaying = true
-                startProgressUpdates()
             } else {
+                isPreparing = true
                 isPlaying = false
-                errorMessage = "Playback didn’t start. Try the retry button below."
             }
         } catch {
+            pendingAutoPlay = false
             isPlaying = false
             errorMessage = "We couldn't start audio playback."
         }
-    }
-
-    private func startProgressUpdates() {
-        progressTask?.cancel()
-        progressTask = Task { @MainActor [weak self] in
-            while let self, Task.isCancelled == false {
-                self.refreshPlaybackMetrics()
-                try? await Task.sleep(for: .milliseconds(250))
-            }
-        }
-    }
-
-    private func stopProgressUpdates() {
-        progressTask?.cancel()
-        progressTask = nil
     }
 
     private func refreshPlaybackMetrics() {
@@ -653,11 +750,13 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
             return
         }
 
-        currentTime = min(max(0, player.currentTime), max(duration, player.duration))
-        if player.duration.isFinite, player.duration > 0 {
-            duration = player.duration
+        if let resolvedDuration: Double = Self.resolvedDuration(from: player.currentItem) {
+            duration = resolvedDuration
         }
-        isPlaying = player.isPlaying
+        if let resolvedCurrentTime: Double = Self.resolvedCurrentTime(from: player) {
+            currentTime = min(max(0, resolvedCurrentTime), max(duration, resolvedCurrentTime))
+        }
+        isPlaying = player.timeControlStatus == .playing
     }
 
     private func syncPlaybackState() {
@@ -667,12 +766,14 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
             return
         }
 
-        if player.duration.isFinite, player.duration > 0 {
-            duration = player.duration
+        if let resolvedDuration: Double = Self.resolvedDuration(from: player.currentItem) {
+            duration = resolvedDuration
         }
-        currentTime = player.currentTime
-        isPlaying = player.isPlaying
-        isPreparing = false
+        if let resolvedCurrentTime: Double = Self.resolvedCurrentTime(from: player) {
+            currentTime = resolvedCurrentTime
+        }
+        isPlaying = player.timeControlStatus == .playing
+        isPreparing = player.currentItem?.status == .unknown && pendingAutoPlay
     }
 
     private func activateAudioSession() throws {
@@ -701,8 +802,6 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
                 let key: String = item.name.lowercased()
                 return key != "dl" && key != "raw" && key != "st"
             }
-            // Keep the original Dropbox host: `/scl/fi/...` links are signed for that host and
-            // can fail if rewritten, but they consistently support `raw=1` for direct playback.
             components.queryItems = filteredItems + [URLQueryItem(name: "raw", value: "1")]
         }
 
@@ -741,31 +840,37 @@ final class AudioStore: NSObject, AVAudioPlayerDelegate {
         return "\(stableHash)-\(originalName)"
     }
 
+    nonisolated private static func resolvedDuration(from item: AVPlayerItem?) -> Double? {
+        guard let seconds: Double = item?.duration.seconds, seconds.isFinite, seconds > 0 else {
+            return nil
+        }
+        return seconds
+    }
+
+    nonisolated private static func resolvedCurrentTime(from player: AVPlayer?) -> Double? {
+        guard let seconds: Double = player?.currentTime().seconds, seconds.isFinite, seconds >= 0 else {
+            return nil
+        }
+        return seconds
+    }
+
     private func teardownPlayer() {
-        stopProgressUpdates()
-        player?.stop()
+        let currentPlayer: AVPlayer? = player
+        if let timeObserver, let currentPlayer {
+            currentPlayer.removeTimeObserver(timeObserver)
+        }
+        timeObserver = nil
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = nil
+        timeControlObservation?.invalidate()
+        timeControlObservation = nil
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+        }
+        endObserver = nil
+        currentPlayer?.pause()
+        currentPlayer?.replaceCurrentItem(with: nil)
         player = nil
-    }
-
-    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.stopProgressUpdates()
-            self.pendingAutoPlay = false
-            self.currentTime = self.duration
-            self.isPlaying = false
-            self.isPreparing = false
-        }
-    }
-
-    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            self.stopProgressUpdates()
-            self.isPlaying = false
-            self.isPreparing = false
-            self.errorMessage = "We couldn't play this session audio."
-        }
     }
 }
 
