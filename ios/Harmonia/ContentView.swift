@@ -778,15 +778,12 @@ final class AudioStore {
 
     private func activateAudioSession() throws {
         let session: AVAudioSession = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try session.setActive(true)
-        try session.overrideOutputAudioPort(.speaker)
     }
 
     private func deactivateAudioSession() {
-        let session: AVAudioSession = AVAudioSession.sharedInstance()
-        try? session.overrideOutputAudioPort(.none)
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     nonisolated private static func playbackURLString(for session: Session) -> String {

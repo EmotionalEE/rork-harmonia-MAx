@@ -3,28 +3,11 @@ import AVFoundation
 import UIKit
 
 nonisolated final class SessionToneEngine {
-    private let engine: AVAudioEngine
-    private let playerNode: AVAudioPlayerNode
-    private let format: AVAudioFormat
-    private let sampleRate: Double
-
-    init() {
-        let engine: AVAudioEngine = AVAudioEngine()
-        let playerNode: AVAudioPlayerNode = AVAudioPlayerNode()
-        let outputFormat: AVAudioFormat = engine.outputNode.inputFormat(forBus: 0)
-        let resolvedSampleRate: Double = outputFormat.sampleRate > 0 ? outputFormat.sampleRate : 44_100
-        let channelCount: AVAudioChannelCount = max(2, outputFormat.channelCount)
-        let format: AVAudioFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: resolvedSampleRate, channels: channelCount, interleaved: false) ?? outputFormat
-
-        engine.attach(playerNode)
-        engine.connect(playerNode, to: engine.mainMixerNode, format: format)
-        engine.mainMixerNode.outputVolume = 1
-
-        self.engine = engine
-        self.playerNode = playerNode
-        self.format = format
-        self.sampleRate = resolvedSampleRate
-    }
+    private var engine: AVAudioEngine?
+    private var playerNode: AVAudioPlayerNode?
+    private var format: AVAudioFormat?
+    private var sampleRate: Double = 44_100
+    private var isSetUp: Bool = false
 
     func startResonance(frequencies: [Double], intensity: Double, pulsePattern: [Double]) {
         let resolvedFrequencies: [Double] = frequencies.isEmpty ? [174, 285, 396] : frequencies
@@ -40,11 +23,37 @@ nonisolated final class SessionToneEngine {
     }
 
     func stop() {
-        playerNode.stop()
-        playerNode.reset()
-        if engine.isRunning {
+        playerNode?.stop()
+        playerNode?.reset()
+        if let engine, engine.isRunning {
             engine.pause()
         }
+    }
+
+    private func setUp() {
+        guard !isSetUp else { return }
+
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
+
+        let newEngine = AVAudioEngine()
+        let newPlayerNode = AVAudioPlayerNode()
+
+        let outputFormat = newEngine.outputNode.inputFormat(forBus: 0)
+        let resolvedSampleRate: Double = outputFormat.sampleRate > 0 ? outputFormat.sampleRate : 44_100
+        let channelCount: AVAudioChannelCount = max(2, outputFormat.channelCount)
+        let resolvedFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: resolvedSampleRate, channels: channelCount, interleaved: false) ?? outputFormat
+
+        newEngine.attach(newPlayerNode)
+        newEngine.connect(newPlayerNode, to: newEngine.mainMixerNode, format: resolvedFormat)
+        newEngine.mainMixerNode.outputVolume = 1
+
+        self.engine = newEngine
+        self.playerNode = newPlayerNode
+        self.format = resolvedFormat
+        self.sampleRate = resolvedSampleRate
+        self.isSetUp = true
     }
 
     private func playBuffer(_ buffer: AVAudioPCMBuffer?) {
@@ -54,8 +63,13 @@ nonisolated final class SessionToneEngine {
         }
 
         do {
+            setUp()
+            guard let engine, let playerNode else { return }
             try activateAudioSession()
-            try startEngineIfNeeded()
+            if !engine.isRunning {
+                engine.prepare()
+                try engine.start()
+            }
             playerNode.stop()
             playerNode.reset()
             playerNode.scheduleBuffer(buffer, at: nil, options: .loops)
@@ -65,21 +79,14 @@ nonisolated final class SessionToneEngine {
         }
     }
 
-    private func startEngineIfNeeded() throws {
-        if engine.isRunning == false {
-            engine.prepare()
-            try engine.start()
-        }
-    }
-
     private func activateAudioSession() throws {
-        let session: AVAudioSession = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try session.setActive(true)
-        try session.overrideOutputAudioPort(.speaker)
     }
 
     private func makeResonanceBuffer(frequencies: [Double], intensity: Double, pulsePattern: [Double]) -> AVAudioPCMBuffer? {
+        setUp()
         let duration: Double = 4
         return makeBuffer(duration: duration) { time in
             let clampedIntensity: Double = min(max(intensity, 0), 1)
@@ -95,6 +102,7 @@ nonisolated final class SessionToneEngine {
     }
 
     private func makeBinauralBuffer(baseFrequency: Double, beatFrequency: Double, intensity: Double) -> AVAudioPCMBuffer? {
+        setUp()
         let duration: Double = 2
         return makeBuffer(duration: duration) { time in
             let clampedIntensity: Double = min(max(intensity, 0), 1)
@@ -110,6 +118,7 @@ nonisolated final class SessionToneEngine {
     }
 
     private func makeIsochronicBuffer(carrierFrequency: Double, pulseFrequency: Double, intensity: Double) -> AVAudioPCMBuffer? {
+        setUp()
         let duration: Double = 2
         return makeBuffer(duration: duration) { time in
             let clampedIntensity: Double = min(max(intensity, 0), 1)
@@ -123,6 +132,7 @@ nonisolated final class SessionToneEngine {
     }
 
     private func makeBuffer(duration: Double, sample: (_ time: Double) -> (Float, Float)) -> AVAudioPCMBuffer? {
+        guard let format else { return nil }
         let frameCount: AVAudioFrameCount = AVAudioFrameCount(sampleRate * duration)
         guard let buffer: AVAudioPCMBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount),
               let channelData: UnsafePointer<UnsafeMutablePointer<Float>> = buffer.floatChannelData else {
