@@ -4607,30 +4607,43 @@ struct EmotionIconView: View {
 
 struct HarmoniaBackgroundView: View {
     let colors: [Color]
+    var showGlowOrbs: Bool = true
+
+    private var isDefaultDark: Bool {
+        colors.count <= 2
+            && colors.first == Color(hex: "#070A12")
+    }
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Color(hex: "#070A12")
+                if isDefaultDark {
+                    Color(hex: "#070A12")
+                        .ignoresSafeArea()
+                    LinearGradient(
+                        colors: [Color(hex: "#070A12"), Color(hex: "#0B1022"), Color(hex: "#071A24")],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
                     .ignoresSafeArea()
-                LinearGradient(
-                    colors: [Color(hex: "#070A12"), Color(hex: "#0B1022"), Color(hex: "#071A24")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-                Circle()
-                    .fill(Color(red: 74/255, green: 163/255, blue: 255/255).opacity(0.22))
-                    .frame(width: 320, height: 320)
-                    .rotationEffect(.degrees(18))
-                    .position(x: geo.size.width + 20, y: -10)
-                    .allowsHitTesting(false)
-                Circle()
-                    .fill(Color(red: 31/255, green: 214/255, blue: 193/255).opacity(0.16))
-                    .frame(width: 360, height: 360)
-                    .rotationEffect(.degrees(-10))
-                    .position(x: -40, y: geo.size.height + 60)
-                    .allowsHitTesting(false)
+                } else {
+                    LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .ignoresSafeArea()
+                }
+                if showGlowOrbs {
+                    Circle()
+                        .fill(Color(red: 74/255, green: 163/255, blue: 255/255).opacity(0.22))
+                        .frame(width: 320, height: 320)
+                        .rotationEffect(.degrees(18))
+                        .position(x: geo.size.width + 20, y: -10)
+                        .allowsHitTesting(false)
+                    Circle()
+                        .fill(Color(red: 31/255, green: 214/255, blue: 193/255).opacity(0.16))
+                        .frame(width: 360, height: 360)
+                        .rotationEffect(.degrees(-10))
+                        .position(x: -40, y: geo.size.height + 60)
+                        .allowsHitTesting(false)
+                }
             }
         }
         .ignoresSafeArea()
