@@ -1525,6 +1525,7 @@ struct HomeView: View {
     @Environment(UserProgressStore.self) private var progressStore
     @State private var selectedEmotionID: String?
     @State private var showAI: Bool = false
+    @State private var hasAppeared: Bool = false
 
     let onOpenSession: (Session) -> Void
     let onOpenInsights: () -> Void
@@ -1532,20 +1533,41 @@ struct HomeView: View {
     let onOpenProfile: () -> Void
     let onOpenSubscription: () -> Void
 
+    private let bg0 = Color(hex: "#070A12")
+    private let gold = Color(hex: "#F8C46C")
+    private let teal = Color(hex: "#1FD6C1")
+    private let blue = Color(hex: "#4AA3FF")
+    private let textColor = Color(hex: "#F5F7FF")
+    private let textDim = Color(hex: "#F5F7FF").opacity(0.78)
+    private let textFaint = Color(hex: "#F5F7FF").opacity(0.58)
+    private let cardBG = Color.white.opacity(0.08)
+    private let stroke = Color.white.opacity(0.14)
+    private let purple = Color(hex: "#9333EA")
+
     private var filteredSessions: [Session] {
         harmoniaSessions.filter { $0.id != "welcome-intro" && (selectedEmotionID == nil || $0.targetEmotions.contains(selectedEmotionID ?? "")) }
     }
 
+    private var sessionsSectionTitle: String {
+        if let emotionID = selectedEmotionID, let state = harmoniaStates.first(where: { $0.id == emotionID }) {
+            return "Sessions for \(state.label)"
+        }
+        return "Recommended Sessions"
+    }
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
-                emotionStrip
-                sessionsSection
-                aiCard
+        ZStack {
+            homeBackground
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    headerSection
+                    emotionSection
+                    sessionsSection
+                    aiChatSection
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 20)
+            .scrollIndicators(.hidden)
         }
         .sheet(isPresented: $showAI) {
             AIChatModal()
@@ -1553,57 +1575,146 @@ struct HomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Button(action: onOpenSubscription) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "crown.fill")
-                            .foregroundStyle(Color(red: 0.973, green: 0.769, blue: 0.424))
-                        Text("Premium")
-                            .foregroundStyle(Color(red: 0.29, green: 0.64, blue: 1.0))
-                    }
-                }
-                .buttonStyle(HarmoniaCapsuleButtonStyle())
-                .testID("subscription-open")
-                Spacer()
-                Button(action: onOpenProfile) {
-                    Image(systemName: "person.crop.circle")
-                        .font(.title3)
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(HarmoniaIconButtonStyle())
-                .testID("profile-open")
+        .task {
+            guard !hasAppeared else { return }
+            withAnimation(.easeOut(duration: 0.8)) {
+                hasAppeared = true
             }
-            Text("How are you feeling?")
-                .font(.system(.largeTitle, design: .default, weight: .heavy).width(.compressed))
-                .foregroundStyle(.white)
-            Text("Pick the emotion that feels most present. We will cue sessions that match.")
-                .font(.body)
-                .foregroundStyle(.white.opacity(0.74))
-            Button(action: onOpenJournal) {
-                HStack {
-                    Label("Daily check-in", systemImage: "calendar")
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                }
-                .font(.headline)
-                .foregroundStyle(Color(hex: "#C4A882"))
-                .padding(16)
-                .background(.white.opacity(0.08), in: .rect(cornerRadius: 22))
-            }
-            .buttonStyle(.plain)
-            .testID("daily-check-in")
         }
     }
 
-    private var emotionStrip: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Emotional state")
-                .font(.headline)
-                .foregroundStyle(.white.opacity(0.88))
+    private var homeBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#070A12"), Color(hex: "#0B1022"), Color(hex: "#071A24")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            Circle()
+                .fill(blue.opacity(0.22))
+                .frame(width: 320, height: 320)
+                .blur(radius: 80)
+                .offset(x: 140, y: -280)
+                .rotationEffect(.degrees(18))
+
+            Circle()
+                .fill(teal.opacity(0.16))
+                .frame(width: 360, height: 360)
+                .blur(radius: 90)
+                .offset(x: -160, y: 400)
+                .rotationEffect(.degrees(-10))
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onOpenJournal) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(gold)
+                    Text("Daily check-in")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color(hex: "#C4A882"))
+                        .tracking(0.2)
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(gold.opacity(0.10), in: .capsule)
+                .overlay {
+                    Capsule().strokeBorder(gold.opacity(0.22), lineWidth: 1)
+                }
+            }
+            .buttonStyle(PlanCardButtonStyle())
+            .testID("daily-check-in")
+
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(gold.opacity(0.95))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: "crown.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(bg0)
+                }
+                Text("How are you feeling?")
+                    .font(.system(size: 28, weight: .heavy))
+                    .foregroundStyle(textColor)
+                    .tracking(-0.2)
+            }
+            .padding(.top, 14)
+
+            Text("Pick the emotion that feels most present. We will cue sessions that match.")
+                .font(.system(size: 15))
+                .foregroundStyle(textDim)
+                .lineSpacing(3)
+                .padding(.top, 10)
+
+            HStack(spacing: 10) {
+                Button(action: onOpenSubscription) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(gold)
+                        Text("Harmonia Max")
+                            .font(.system(size: 14, weight: .heavy))
+                            .foregroundStyle(textColor)
+                            .tracking(0.2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(cardBG.opacity(0.75), in: .rect(cornerRadius: 16))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(stroke, lineWidth: 1)
+                    }
+                }
+                .buttonStyle(PlanCardButtonStyle())
+                .testID("subscription-open")
+
+                Button(action: onOpenProfile) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.white)
+                        Text("Profile")
+                            .font(.system(size: 14, weight: .heavy))
+                            .foregroundStyle(textColor)
+                            .tracking(0.2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(cardBG.opacity(0.75), in: .rect(cornerRadius: 16))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(stroke, lineWidth: 1)
+                    }
+                }
+                .buttonStyle(PlanCardButtonStyle())
+                .testID("profile-open")
+            }
+            .padding(.top, 14)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 14)
+        .opacity(hasAppeared ? 1 : 0)
+        .scaleEffect(hasAppeared ? 1 : 0.95)
+    }
+
+    private var emotionSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Right now\u{2026}")
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(.white)
+                .tracking(0.2)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 12)
+
             ScrollView(.horizontal) {
                 HStack(spacing: 12) {
                     ForEach(harmoniaStates) { state in
@@ -1611,74 +1722,81 @@ struct HomeView: View {
                             state: state,
                             isSelected: selectedEmotionID == state.id,
                             action: {
-                                selectedEmotionID = selectedEmotionID == state.id ? nil : state.id
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                    selectedEmotionID = selectedEmotionID == state.id ? nil : state.id
+                                }
+                                HarmoniaHaptics.selection()
                                 progressStore.addEmotionLog(emotion: state.id, level: Int.random(in: 3...8))
                             }
                         )
                     }
                 }
+                .padding(.bottom, 14)
             }
-            .contentMargins(.horizontal, 1)
+            .contentMargins(.horizontal, 18)
             .scrollIndicators(.hidden)
         }
+        .padding(.top, 10)
+        .padding(.bottom, 6)
     }
 
     private var sessionsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Recommended sessions")
-                    .font(.title3.weight(.bold))
-                    .foregroundStyle(.white)
-                Spacer()
-                Button("Insights") {
-                    onOpenInsights()
-                }
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Color(hex: "#1FD6C1"))
-            }
-            ForEach(filteredSessions) { session in
-                SessionCardView(session: session) {
+        VStack(alignment: .leading, spacing: 20) {
+            Text(sessionsSectionTitle)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.white)
+
+            ForEach(Array(filteredSessions.enumerated()), id: \.element.id) { index, session in
+                SessionCardView(session: session, index: index) {
+                    HarmoniaHaptics.impact()
                     onOpenSession(session)
                 }
             }
         }
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
     }
 
-    private var aiCard: some View {
+    private var aiChatSection: some View {
         Button {
             showAI = true
         } label: {
-            HStack(alignment: .top, spacing: 14) {
-                Image(systemName: "sparkles")
-                    .font(.title3)
-                    .foregroundStyle(Color(hex: "#F8C46C"))
-                VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(purple.opacity(0.15))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(gold)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Wellness Companion")
-                        .font(.headline)
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                     Text("A gentle check-in, powered by AI")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.6))
                 }
+
                 Spacer()
-                Image(systemName: "message")
-                    .foregroundStyle(.white.opacity(0.7))
+
+                Image(systemName: "message.circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(textFaint)
             }
             .padding(18)
-            .background(
-                LinearGradient(
-                    colors: [Color(hex: "#1A1D3A"), Color(hex: "#181B35")],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: .rect(cornerRadius: 24)
-            )
+            .background(purple.opacity(0.08), in: .rect(cornerRadius: 20))
             .overlay {
-                RoundedRectangle(cornerRadius: 24)
-                    .strokeBorder(Color(hex: "#6B5CE7").opacity(0.45), lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(purple.opacity(0.2), lineWidth: 1)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlanCardButtonStyle())
+        .padding(.horizontal, 20)
+        .padding(.top, 16)
+        .padding(.bottom, 30)
     }
 }
 
@@ -1687,66 +1805,143 @@ struct EmotionFilterCard: View {
     let isSelected: Bool
     let action: () -> Void
 
+    private let teal = Color(hex: "#1FD6C1")
+    private let bg0 = Color(hex: "#070A12")
+
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                EmotionIconView(emotionID: state.id, color: state.colors.last ?? .white, size: 24)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 44, height: 44)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14)
+                                    .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                            }
+                        EmotionIconView(
+                            emotionID: state.id,
+                            color: isSelected ? .white : (state.colors.first ?? .white),
+                            size: 30
+                        )
+                    }
+
+                    Spacer()
+
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(isSelected ? teal : .white.opacity(0.06))
+                            .frame(width: 26, height: 26)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .strokeBorder(isSelected ? teal.opacity(0.8) : .white.opacity(0.14), lineWidth: 1)
+                            }
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 14, weight: .heavy))
+                                .foregroundStyle(bg0)
+                        }
+                    }
+                }
+
                 Text(state.label)
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .black))
                     .foregroundStyle(.white)
-                Text(isSelected ? "Selected" : "Tap to filter")
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.68))
+                    .tracking(-0.2)
+                    .padding(.top, 10)
+
+                Text("tap to filter")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .padding(.top, 2)
             }
-            .padding(16)
-            .frame(width: 132, alignment: .leading)
+            .padding(12)
+            .frame(width: 150)
+            .frame(minHeight: 112)
             .background(
                 LinearGradient(
-                    colors: isSelected ? state.colors : [.white.opacity(0.10), .white.opacity(0.05)],
+                    colors: isSelected ? state.colors : [.white.opacity(0.08), .white.opacity(0.08)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
-                in: .rect(cornerRadius: 24)
+                in: .rect(cornerRadius: 18)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 24)
-                    .strokeBorder(.white.opacity(isSelected ? 0.24 : 0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
             }
+            .shadow(color: isSelected ? .black.opacity(0.25) : .clear, radius: 16, y: 10)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PlanCardButtonStyle())
     }
 }
 
 struct SessionCardView: View {
     let session: Session
+    var index: Int = 0
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(session.title)
-                        .font(.title3.weight(.bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(.white)
+                        .padding(.bottom, 8)
+
                     Text(session.description)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.78))
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .lineSpacing(4)
                         .lineLimit(2)
+                        .padding(.bottom, 12)
+
                     HStack(spacing: 8) {
-                        HarmoniaMiniTag(text: "\(session.duration) min")
-                        HarmoniaMiniTag(text: session.frequency)
+                        SessionMetaTag(text: "\(session.duration) min")
+                        SessionMetaTag(text: "\(session.frequency)Hz")
                     }
                 }
-                Spacer(minLength: 0)
-                EmotionIconView(emotionID: session.targetEmotions.first ?? "calm", color: .white, size: 32)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ZStack {
+                    Circle()
+                        .fill(.white.opacity(0.1))
+                        .frame(width: 60, height: 60)
+                    EmotionIconView(
+                        emotionID: session.targetEmotions.first ?? "calm",
+                        color: .white,
+                        size: 32
+                    )
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(18)
-            .background(LinearGradient(colors: session.colors, startPoint: .topLeading, endPoint: .bottomTrailing), in: .rect(cornerRadius: 28))
-            .contentShape(.rect(cornerRadius: 28))
+            .padding(20)
+            .frame(minHeight: 120)
+            .background(
+                LinearGradient(
+                    colors: session.colors,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: .rect(cornerRadius: 20)
+            )
         }
-        .buttonStyle(.plain)
-        .contentShape(.rect(cornerRadius: 28))
+        .buttonStyle(PlanCardButtonStyle())
+        .padding(.bottom, -4)
+    }
+}
+
+struct SessionMetaTag: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(.white.opacity(0.2), in: .capsule)
     }
 }
 
