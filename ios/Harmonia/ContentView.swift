@@ -3127,137 +3127,810 @@ struct ProfileView: View {
     @Environment(UserProgressStore.self) private var progressStore
     @Environment(AuthStore.self) private var authStore
     @Environment(JournalStore.self) private var journalStore
+
     @State private var showNameEditor: Bool = false
+    @State private var showEmotionFocus: Bool = false
+    @State private var showProfilePicture: Bool = false
     @State private var draftName: String = ""
     @State private var resetArmed: Bool = false
+    @State private var contentOpacity: Double = 0
+    @State private var selectedEmotionID: String = ""
 
     let onOpenInsights: () -> Void
     let onOpenVibro: () -> Void
+
+    private let profileColors = ProfileColors()
+
+    private var avatarIcon: String {
+        let val = progressStore.progress.profilePicture.value
+        let knownIcons = ["person.fill", "leaf.fill", "moon.fill", "sun.max.fill", "heart.fill", "star.fill", "flame.fill", "drop.fill"]
+        if progressStore.progress.profilePicture.type == "icon", knownIcons.contains(val) {
+            return val
+        }
+        return "person.fill"
+    }
+
+    private var lastSessionRelative: String {
+        guard let dateStr = progressStore.progress.lastSessionDate else { return "—" }
+        guard let date = Date.harmoniaDayFormatter.date(from: dateStr) else { return dateStr }
+        let days = Calendar.current.dateComponents([.day], from: date, to: Date()).day ?? 0
+        if days == 0 { return "Today" }
+        if days == 1 { return "Yesterday" }
+        return "\(days)d ago"
+    }
+
+    private var avgLength: Int {
+        guard progressStore.progress.totalSessions > 0 else { return 0 }
+        return progressStore.progress.totalMinutes / progressStore.progress.totalSessions
+    }
+
+    private var recentSessions: [(session: Session, index: Int)] {
+        let completed = progressStore.progress.completedSessions
+        var seen = Set<String>()
+        var result: [(Session, Int)] = []
+        for (i, sid) in completed.enumerated() {
+            guard !seen.contains(sid), let s = resolveSession(id: sid) else { continue }
+            seen.insert(sid)
+            result.append((s, i))
+            if result.count >= 5 { break }
+        }
+        return result
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    HStack {
-                        Spacer()
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark")
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(.white.opacity(0.08), in: .circle)
-                        }
+                    topBar
+                    heroSection
+                    insightsCard
+                    emotionFocusCard
+                    if !recentSessions.isEmpty {
+                        recentSessionsCard
                     }
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(.linearGradient(colors: [Color(hex: "#5237D6"), Color(hex: "#1FD6C1")], startPoint: .topLeading, endPoint: .bottomTrailing))
-                                .frame(width: 84, height: 84)
-                            Image(systemName: "person.fill")
-                                .font(.title)
-                                .foregroundStyle(.white)
-                        }
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(progressStore.progress.name)
-                                .font(.title2.weight(.bold))
-                                .foregroundStyle(.white)
-                            Button("Edit name") {
-                                draftName = progressStore.progress.name
-                                showNameEditor = true
-                            }
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(Color(hex: "#1FD6C1"))
-                        }
-                    }
-                    ProfileStatCard()
-                    Button("Open insights") {
-                        dismiss()
-                        onOpenInsights()
-                    }
-                    .buttonStyle(HarmoniaGlassButtonStyle())
                     HarmoniaJournalView(entries: journalStore.entries)
-                    VStack(spacing: 12) {
-                        Button("Vibroacoustic settings") {
-                            dismiss()
-                            onOpenVibro()
-                        }
-                        .buttonStyle(HarmoniaGlassButtonStyle())
-                        Button(resetArmed ? "Tap again to reset progress" : "Reset progress") {
-                            if resetArmed {
-                                progressStore.resetProgress()
-                                resetArmed = false
-                            } else {
-                                resetArmed = true
-                            }
-                        }
-                        .buttonStyle(HarmoniaGlassButtonStyle())
-                        Button("Sign out") {
-                            authStore.clearAuth()
-                            progressStore.logout()
-                            dismiss()
-                        }
-                        .buttonStyle(HarmoniaGlassButtonStyle())
-                    }
+                    integrationsCard
+                    actionsCard
                 }
-                .padding(20)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 40)
+                .opacity(contentOpacity)
             }
-            .background(HarmoniaBackgroundView(colors: [Color(hex: "#070A12"), Color(hex: "#0B1022")]))
+            .scrollIndicators(.hidden)
+            .background(profileBackground)
             .sheet(isPresented: $showNameEditor) {
-                NavigationStack {
-                    VStack(spacing: 16) {
-                        TextField("Name", text: $draftName)
-                            .padding(16)
-                            .background(.regularMaterial, in: .rect(cornerRadius: 20))
-                        Button("Save") {
-                            progressStore.updateName(name: draftName)
-                            showNameEditor = false
-                        }
-                        .buttonStyle(HarmoniaPrimaryButtonStyle(colors: [Color(hex: "#5237D6"), Color(hex: "#8836E2")]))
-                        Spacer()
+                profileNameSheet
+                    .presentationDetents([.medium])
+            }
+            .sheet(isPresented: $showEmotionFocus) {
+                profileEmotionSheet
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showProfilePicture) {
+                profilePictureSheet
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .task {
+            withAnimation(.easeOut(duration: 0.52)) {
+                contentOpacity = 1
+            }
+        }
+    }
+
+    // MARK: - Background
+
+    private var profileBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: "#070A12"), Color(hex: "#0B1022"), Color(hex: "#071A24")],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            Circle()
+                .fill(Color(hex: "#4AA3FF").opacity(0.22))
+                .frame(width: 320, height: 320)
+                .blur(radius: 80)
+                .offset(x: 140, y: -120)
+                .rotationEffect(.degrees(18))
+                .allowsHitTesting(false)
+
+            Circle()
+                .fill(Color(hex: "#1FD6C1").opacity(0.16))
+                .frame(width: 360, height: 360)
+                .blur(radius: 90)
+                .offset(x: -160, y: 300)
+                .rotationEffect(.degrees(-10))
+                .allowsHitTesting(false)
+        }
+    }
+
+    // MARK: - Top Bar
+
+    private var topBar: some View {
+        HStack {
+            Spacer()
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(profileColors.text)
+                    .frame(width: 40, height: 40)
+                    .background(profileColors.card, in: .rect(cornerRadius: 14))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14)
+                            .strokeBorder(profileColors.stroke, lineWidth: 1)
                     }
-                    .padding(20)
+            }
+        }
+        .padding(.top, 6)
+    }
+
+    // MARK: - Hero
+
+    private var heroSection: some View {
+        HStack(spacing: 12) {
+            Button {
+                showProfilePicture = true
+                HarmoniaHaptics.selection()
+            } label: {
+                ZStack {
+                    LinearGradient(
+                        colors: [Color(hex: "#1FD6C1").opacity(0.80), Color(hex: "#4AA3FF").opacity(0.80)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .frame(width: 76, height: 76)
+                    .clipShape(.rect(cornerRadius: 22))
+
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(.white.opacity(0.82))
+                        .frame(width: 68, height: 68)
+                        .overlay {
+                            Image(systemName: avatarIcon)
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundStyle(Color(hex: "#070A12"))
+                        }
                 }
-                .presentationDetents([.medium])
+            }
+            .buttonStyle(HarmoniaScaleButtonStyle())
+
+            HStack(spacing: 8) {
+                Text(progressStore.progress.name)
+                    .font(.system(size: 22, weight: .black))
+                    .foregroundStyle(profileColors.text)
+                    .lineLimit(1)
+
+                Button {
+                    draftName = progressStore.progress.name
+                    showNameEditor = true
+                    HarmoniaHaptics.selection()
+                } label: {
+                    Image(systemName: "pencil.line")
+                        .font(.system(size: 14))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(profileColors.card, in: .rect(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(profileColors.stroke, lineWidth: 1)
+                        }
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 2)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Insights Card
+
+    private var insightsCard: some View {
+        Button {
+            dismiss()
+            onOpenInsights()
+            HarmoniaHaptics.selection()
+        } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text("Insights")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(profileColors.text)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Text("See details")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(profileColors.textFaint)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(profileColors.textFaint)
+                    }
+                }
+                .padding(.bottom, 8)
+
+                profileInsightRow(icon: "heart.text.clipboard", iconBG: profileColors.gold.opacity(0.92), label: "Last session", value: lastSessionRelative)
+                profileInsightRow(icon: "waveform.path.ecg", iconBG: profileColors.teal.opacity(0.92), label: "Avg length", value: "\(avgLength)m")
+                profileInsightRow(icon: "star.fill", iconBG: profileColors.blue.opacity(0.92), label: "Completed", value: "\(progressStore.progress.completedSessions.count)/\(harmoniaSessions.count)")
+            }
+            .padding(14)
+            .background(profileColors.card, in: .rect(cornerRadius: 18))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(profileColors.stroke, lineWidth: 1)
             }
         }
+        .buttonStyle(HarmoniaScaleButtonStyle())
     }
-}
 
-struct ProfileStatCard: View {
-    @Environment(UserProgressStore.self) private var progressStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Insights")
-                .font(.headline)
-                .foregroundStyle(.white)
-            HStack {
-                ProfileMetricView(title: "Sessions", value: "\(progressStore.progress.totalSessions)")
-                ProfileMetricView(title: "Minutes", value: "\(progressStore.progress.totalMinutes)")
-                ProfileMetricView(title: "Streak", value: "\(progressStore.progress.streak)")
-            }
-        }
-        .padding(18)
-        .background(.white.opacity(0.08), in: .rect(cornerRadius: 24))
-    }
-}
-
-struct ProfileMetricView: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func profileInsightRow(icon: String, iconBG: Color, label: String, value: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color(hex: "#070A12"))
+                .frame(width: 28, height: 28)
+                .background(iconBG, in: .rect(cornerRadius: 10))
+            Text(label)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(profileColors.textDim)
+            Spacer()
             Text(value)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(.white)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.66))
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(profileColors.text)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
     }
+
+    // MARK: - Emotion Focus Card
+
+    private var emotionFocusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Emotion focus")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(profileColors.text)
+                Spacer()
+                Button {
+                    if let et = progressStore.progress.emotionTracking {
+                        selectedEmotionID = et.emotion
+                    }
+                    showEmotionFocus = true
+                    HarmoniaHaptics.selection()
+                } label: {
+                    Text(progressStore.progress.emotionTracking != nil ? "Adjust" : "Set focus")
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundStyle(profileColors.textDim)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.white.opacity(0.06), in: .capsule)
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                        }
+                }
+            }
+
+            if let et = progressStore.progress.emotionTracking,
+               let state = harmoniaStates.first(where: { $0.id == et.emotion }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(profileColors.gold)
+                        .frame(width: 32, height: 32)
+                        .background(profileColors.gold.opacity(0.14), in: .rect(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(profileColors.gold.opacity(0.22), lineWidth: 1)
+                        }
+                    Text(state.label)
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(profileColors.text)
+                }
+
+                HStack(spacing: 12) {
+                    profileLevelBar(label: "Current", value: et.currentLevel, color: profileColors.gold)
+                    profileLevelBar(label: "Desired", value: et.desiredLevel, color: profileColors.teal)
+                }
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 22))
+                        .foregroundStyle(profileColors.teal)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Set your current focus")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(profileColors.text)
+                        Text("Choose an emotion to tailor your sessions")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(profileColors.textFaint)
+                    }
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white.opacity(0.04), in: .rect(cornerRadius: 16))
+            }
+        }
+        .padding(14)
+        .background(profileColors.card, in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(profileColors.stroke, lineWidth: 1)
+        }
+    }
+
+    private func profileLevelBar(label: String, value: Int, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 12, weight: .heavy))
+                .foregroundStyle(profileColors.textFaint)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.white.opacity(0.10))
+                        .overlay {
+                            Capsule()
+                                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                        }
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(geo.size.width * CGFloat(value) / 10, 4))
+                }
+            }
+            .frame(height: 10)
+            Text("\(value)/10")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(profileColors.textDim)
+        }
+    }
+
+    // MARK: - Recent Sessions
+
+    private var recentSessionsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Recent sessions")
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(profileColors.text)
+
+            ForEach(recentSessions, id: \.index) { item in
+                HStack(spacing: 12) {
+                    LinearGradient(colors: item.session.colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .frame(width: 44, height: 44)
+                        .clipShape(.rect(cornerRadius: 14))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.session.title)
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(profileColors.text)
+                            .lineLimit(1)
+                        Text("\(item.session.duration)min · \(item.session.frequency)Hz")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(profileColors.textDim)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(profileColors.textFaint)
+                }
+                .padding(.vertical, 6)
+            }
+        }
+        .padding(14)
+        .background(profileColors.card, in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(profileColors.stroke, lineWidth: 1)
+        }
+    }
+
+    // MARK: - Integrations
+
+    private var integrationsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Integrations")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(profileColors.text)
+                Text("Keep Harmonia in sync with your wellness tools.")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(profileColors.textDim)
+                    .lineSpacing(2)
+            }
+
+            profileIntegrationRow(icon: "heart.text.clipboard", iconBG: profileColors.teal.opacity(0.14), accent: profileColors.teal, name: "Apple Health", desc: "Sync breath + HRV signals")
+            profileIntegrationRow(icon: "waveform.path.ecg", iconBG: profileColors.blue.opacity(0.16), accent: profileColors.blue, name: "Fitbit", desc: "Bring sleep + recovery data")
+            profileIntegrationRow(icon: "moon.fill", iconBG: Color(hex: "#C8A2FF").opacity(0.18), accent: Color(hex: "#C8A2FF"), name: "Oura", desc: "Track readiness + calm")
+        }
+        .padding(14)
+        .background(profileColors.card, in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(profileColors.stroke, lineWidth: 1)
+        }
+    }
+
+    private func profileIntegrationRow(icon: String, iconBG: Color, accent: Color, name: String, desc: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(accent)
+                .frame(width: 44, height: 44)
+                .background(iconBG, in: .rect(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+                }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(profileColors.text)
+                Text(desc)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(profileColors.textFaint)
+            }
+
+            Spacer()
+
+            Button("Add") {
+            }
+            .font(.system(size: 13, weight: .black))
+            .foregroundStyle(accent)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(.white.opacity(0.04), in: .capsule)
+            .overlay {
+                Capsule()
+                    .strokeBorder(accent, lineWidth: 1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Actions
+
+    private var actionsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Actions")
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(profileColors.text)
+                .padding(.bottom, 2)
+
+            profileActionRow(
+                icon: "gearshape.fill",
+                iconBG: profileColors.teal.opacity(0.92),
+                label: "Vibroacoustic settings",
+                isDestructive: false,
+                isArmed: false
+            ) {
+                dismiss()
+                onOpenVibro()
+                HarmoniaHaptics.selection()
+            }
+
+            profileActionRow(
+                icon: "bolt.fill",
+                iconBG: resetArmed ? profileColors.danger.opacity(0.92) : profileColors.danger.opacity(0.92),
+                label: resetArmed ? "Tap again to confirm reset" : "Reset progress",
+                isDestructive: true,
+                isArmed: resetArmed
+            ) {
+                if resetArmed {
+                    progressStore.resetProgress()
+                    resetArmed = false
+                    HarmoniaHaptics.success()
+                } else {
+                    resetArmed = true
+                    HarmoniaHaptics.impact()
+                }
+            }
+
+            profileActionRow(
+                icon: "rectangle.portrait.and.arrow.right",
+                iconBG: profileColors.teal.opacity(0.92),
+                label: "Sign out",
+                isDestructive: false,
+                isArmed: false
+            ) {
+                authStore.clearAuth()
+                progressStore.logout()
+                dismiss()
+            }
+        }
+        .padding(14)
+        .background(profileColors.card, in: .rect(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .strokeBorder(profileColors.stroke, lineWidth: 1)
+        }
+    }
+
+    private func profileActionRow(icon: String, iconBG: Color, label: String, isDestructive: Bool, isArmed: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(hex: "#070A12"))
+                    .frame(width: 30, height: 30)
+                    .background(iconBG, in: .rect(cornerRadius: 12))
+
+                Text(label)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(isArmed ? profileColors.danger : profileColors.text)
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(profileColors.textFaint)
+            }
+            .padding(10)
+            .background(
+                isArmed ? profileColors.danger.opacity(0.10) : .white.opacity(0.04),
+                in: .rect(cornerRadius: 16)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(isArmed ? profileColors.danger.opacity(0.22) : .white.opacity(0.10), lineWidth: 1)
+            }
+        }
+        .buttonStyle(HarmoniaScaleButtonStyle())
+    }
+
+    // MARK: - Name Sheet
+
+    private var profileNameSheet: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Edit name")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(.white)
+                Spacer()
+                Button {
+                    showNameEditor = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(.white.opacity(0.08), in: .rect(cornerRadius: 14))
+                }
+            }
+
+            Text("Your name")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.58))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField("Enter your name", text: $draftName)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(12)
+                .background(.white.opacity(0.06), in: .rect(cornerRadius: 14))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+                }
+                .textInputAutocapitalization(.words)
+
+            Button {
+                progressStore.updateName(name: draftName)
+                showNameEditor = false
+                HarmoniaHaptics.success()
+            } label: {
+                Text("Save")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(Color(hex: "#070A12"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(colors: [Color(hex: "#F8C46C"), Color(hex: "#FF9D5C")], startPoint: .leading, endPoint: .trailing),
+                        in: .rect(cornerRadius: 18)
+                    )
+            }
+            .buttonStyle(HarmoniaScaleButtonStyle())
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 18)
+        .background(Color(hex: "#0B1022").ignoresSafeArea())
+    }
+
+    // MARK: - Emotion Focus Sheet
+
+    private var profileEmotionSheet: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Emotion focus")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(.white)
+                Spacer()
+                Button {
+                    showEmotionFocus = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(.white.opacity(0.08), in: .rect(cornerRadius: 14))
+                }
+            }
+
+            Text("How are you feeling right now?")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.58))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+            LazyVGrid(columns: columns, spacing: 10) {
+                ForEach(harmoniaStates) { state in
+                    Button {
+                        selectedEmotionID = state.id
+                        HarmoniaHaptics.selection()
+                    } label: {
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(LinearGradient(colors: state.colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                                    .frame(width: 60, height: 60)
+                                EmotionIconView(emotionID: state.id, color: .black.opacity(0.30), size: 30)
+                                if selectedEmotionID == state.id {
+                                    Circle()
+                                        .fill(.white)
+                                        .frame(width: 20, height: 20)
+                                        .overlay {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundStyle(.black)
+                                        }
+                                        .offset(x: 20, y: -20)
+                                }
+                            }
+                            Text(state.label)
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.78))
+                        }
+                        .scaleEffect(selectedEmotionID == state.id ? 1.04 : 1)
+                        .animation(.spring(response: 0.3), value: selectedEmotionID)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer()
+
+            Button {
+                if !selectedEmotionID.isEmpty {
+                    progressStore.updateEmotionTracking(emotion: selectedEmotionID, currentLevel: 5, desiredLevel: 8)
+                    HarmoniaHaptics.success()
+                    showEmotionFocus = false
+                }
+            } label: {
+                Text("Save")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(Color(hex: "#070A12"))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(
+                        LinearGradient(colors: [profileColors.teal, profileColors.blue], startPoint: .leading, endPoint: .trailing),
+                        in: .rect(cornerRadius: 18)
+                    )
+            }
+            .buttonStyle(HarmoniaScaleButtonStyle())
+            .opacity(selectedEmotionID.isEmpty ? 0.5 : 1)
+            .disabled(selectedEmotionID.isEmpty)
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 18)
+        .background(Color(hex: "#0B1022").ignoresSafeArea())
+    }
+
+    // MARK: - Profile Picture Sheet
+
+    private var profilePictureSheet: some View {
+        let presetIcons: [(String, String)] = [
+            ("person.fill", "Self"),
+            ("leaf.fill", "Leaf"),
+            ("moon.fill", "Moon"),
+            ("sun.max.fill", "Sun"),
+            ("heart.fill", "Heart"),
+            ("star.fill", "Star"),
+            ("flame.fill", "Flame"),
+            ("drop.fill", "Drop")
+        ]
+
+        return VStack(spacing: 14) {
+            HStack {
+                Text("Profile icon")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(.white)
+                Spacer()
+                Button {
+                    showProfilePicture = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .background(.white.opacity(0.08), in: .rect(cornerRadius: 14))
+                }
+            }
+
+            Text("Choose an icon")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.58))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(presetIcons, id: \.0) { icon, label in
+                    Button {
+                        progressStore.updateProfilePicture(type: "icon", value: icon)
+                        HarmoniaHaptics.selection()
+                    } label: {
+                        VStack(spacing: 6) {
+                            ZStack {
+                                LinearGradient(
+                                    colors: [Color(hex: "#1FD6C1").opacity(0.6), Color(hex: "#4AA3FF").opacity(0.6)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                .frame(width: 56, height: 56)
+                                .clipShape(.rect(cornerRadius: 20))
+
+                                Image(systemName: icon)
+                                    .font(.system(size: 24, weight: .semibold))
+                                    .foregroundStyle(Color(hex: "#070A12"))
+
+                                if progressStore.progress.profilePicture.value == icon {
+                                    Circle()
+                                        .fill(.white)
+                                        .frame(width: 18, height: 18)
+                                        .overlay {
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundStyle(.black)
+                                        }
+                                        .offset(x: 20, y: -20)
+                                }
+                            }
+                            Text(label)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.58))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 18)
+        .background(Color(hex: "#0B1022").ignoresSafeArea())
+    }
+}
+
+struct ProfileColors {
+    let card: Color = .white.opacity(0.08)
+    let stroke: Color = .white.opacity(0.14)
+    let text: Color = Color(hex: "#F5F7FF")
+    let textDim: Color = Color(hex: "#F5F7FF").opacity(0.78)
+    let textFaint: Color = Color(hex: "#F5F7FF").opacity(0.58)
+    let gold: Color = Color(hex: "#F8C46C")
+    let teal: Color = Color(hex: "#1FD6C1")
+    let blue: Color = Color(hex: "#4AA3FF")
+    let danger: Color = Color(hex: "#FF5A7A")
 }
 
 struct HarmoniaJournalView: View {
