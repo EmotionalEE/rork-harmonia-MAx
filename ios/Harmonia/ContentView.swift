@@ -5049,6 +5049,7 @@ struct VibroacousticSettingsView: View {
         .alert("Delete Account", isPresented: $showDeleteConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
+                HarmoniaHaptics.impact()
                 vibroStore.stop()
                 progressStore.resetProgress()
                 authStore.clearAuth()
@@ -5218,6 +5219,9 @@ struct VibroacousticSettingsView: View {
                             .onChanged { drag in
                                 let newVal = min(max(drag.location.x / geo.size.width, 0), 1)
                                 let rounded: Double = (Double(newVal) * 10).rounded() / 10.0
+                                if rounded != value {
+                                    HarmoniaHaptics.selection()
+                                }
                                 onChange(rounded)
                             }
                     )
