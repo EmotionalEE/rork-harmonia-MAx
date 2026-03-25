@@ -74,8 +74,9 @@ nonisolated final class SessionToneEngine {
 
     private func activateAudioSession() throws {
         let session: AVAudioSession = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback, mode: .default)
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
         try session.setActive(true)
+        try session.overrideOutputAudioPort(.speaker)
     }
 
     private func makeResonanceBuffer(frequencies: [Double], intensity: Double, pulsePattern: [Double]) -> AVAudioPCMBuffer? {
