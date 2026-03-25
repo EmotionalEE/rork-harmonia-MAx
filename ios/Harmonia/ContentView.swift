@@ -1558,7 +1558,6 @@ struct HomeView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                HarmoniaPill(text: "Daily check-in")
                 Spacer()
                 Button(action: onOpenSubscription) {
                     Label("Premium", systemImage: "crown.fill")
