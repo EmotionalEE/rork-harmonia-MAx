@@ -5976,7 +5976,7 @@ private struct SessionGeometryLayout {
 
     init(size: CGSize) {
         let baseSide: CGFloat = min(size.width * 0.9, 420)
-        center = CGPoint(x: size.width / 2, y: size.height * 0.34)
+        center = CGPoint(x: size.width / 2, y: size.height / 2)
         side = baseSide
     }
 }
