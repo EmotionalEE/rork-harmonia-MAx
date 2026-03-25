@@ -428,16 +428,17 @@ struct SubscriptionView: View {
                 .foregroundStyle(textColor)
                 .tracking(0.2)
 
-            VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach([
                     "Unlimited access to all sessions",
                     "Advanced theta wave frequencies",
                     "Personalized recommendations",
+                    "Wellness Companion",
                     "Offline mode",
                     "Progress tracking & insights",
                     "Ad-free experience"
                 ], id: \.self) { feature in
-                    HStack(spacing: 12) {
+                    HStack(alignment: .center, spacing: 12) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10)
                                 .fill(gold.opacity(0.95))
@@ -450,7 +451,9 @@ struct SubscriptionView: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(textColor)
                             .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 10)
                 }
             }
