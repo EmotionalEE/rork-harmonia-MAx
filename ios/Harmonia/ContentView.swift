@@ -5584,15 +5584,7 @@ struct SessionGeometryHost: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var backgroundGradient: LinearGradient {
-        if session.id == "lifting-from-sadness" || session.id == "stress-release-flow" || session.id == "dissolution-anxiousness" {
-            LinearGradient(colors: session.colors, startPoint: .topLeading, endPoint: .bottomTrailing)
-        } else {
-            LinearGradient(
-                colors: [Color(hex: "#8AF6F4"), Color(hex: "#46D8E1"), Color(hex: "#179FB8")],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
+        LinearGradient(colors: session.colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     private var playbackRate: Double {
