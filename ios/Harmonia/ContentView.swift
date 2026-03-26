@@ -5622,7 +5622,7 @@ struct UnwindGeometryView: View, Equatable {
     var body: some View {
         GeometryReader { proxy in
             let layout = SessionGeometryLayout(size: proxy.size)
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SessionGeometryValues.standard(
                         date: timeline.date,
@@ -5652,7 +5652,7 @@ struct QuietAlarmGeometryView: View, Equatable {
     var body: some View {
         GeometryReader { proxy in
             let layout = SessionGeometryLayout(size: proxy.size)
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SessionGeometryValues.quietAlarm(
                         date: timeline.date,
@@ -5680,7 +5680,7 @@ struct SacredGeometryView: View, Equatable {
     var body: some View {
         GeometryReader { proxy in
             let layout = SessionGeometryLayout(size: proxy.size)
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SessionGeometryValues.standard(
                         date: timeline.date,
@@ -5712,7 +5712,7 @@ struct SynchroGeometryView: View, Equatable {
             let side: CGFloat = min(proxy.size.width, proxy.size.height) * 0.9
             let origin: CGPoint = CGPoint(x: (proxy.size.width - side) / 2, y: max(proxy.size.height * 0.15, (proxy.size.height - side) / 2))
             let frame: CGRect = CGRect(origin: origin, size: CGSize(width: side, height: side))
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isAnimating || reduceMotion)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !isAnimating || reduceMotion)) { timeline in
                 Canvas { context, _ in
                     let values = SynchroGeometryValues(
                         date: timeline.date,
@@ -5745,6 +5745,12 @@ private struct SessionGeometryValues {
     let glowOpacity: Double
     let geometryRotation: Double
     let mandalaRotation: Double
+    let pulseRingScale: CGFloat
+    let pulseRingOpacity: Double
+    let particleAngle: Double
+    let shimmerPhase: Double
+    let innerRotation: Double
+    let time: Double
 
     static func standard(
         date: Date,
@@ -5752,12 +5758,11 @@ private struct SessionGeometryValues {
         reduceMotion: Bool,
         playbackRate: Double,
         geometryHalfDuration: Double,
-        mandalaHalfDuration: Double
-    ,
+        mandalaHalfDuration: Double,
         breathCycle: Double
     ) -> SessionGeometryValues {
         guard isAnimating, !reduceMotion else {
-            return SessionGeometryValues(breathScale: 1, breathOpacity: 0.82, glowOpacity: 0.18, geometryRotation: 0, mandalaRotation: 0)
+            return SessionGeometryValues(breathScale: 1, breathOpacity: 0.82, glowOpacity: 0.18, geometryRotation: 0, mandalaRotation: 0, pulseRingScale: 0.4, pulseRingOpacity: 0, particleAngle: 0, shimmerPhase: 0, innerRotation: 0, time: 0)
         }
 
         let safeRate: Double = max(playbackRate, 0.25)
@@ -5765,19 +5770,29 @@ private struct SessionGeometryValues {
         let breathValue: Double = breathProgress(time: t, cycle: breathCycle)
         let geometryValue: Double = oscillatingProgress(time: t, halfDuration: geometryHalfDuration / safeRate)
         let mandalaValue: Double = oscillatingProgress(time: t, halfDuration: mandalaHalfDuration / safeRate)
+        let pulseCycle: Double = 3.2 / safeRate
+        let pulsePhase: Double = (t.truncatingRemainder(dividingBy: pulseCycle)) / pulseCycle
+        let particleSpeed: Double = 20 / safeRate
+        let shimmerCycle: Double = 2.5 / safeRate
 
         return SessionGeometryValues(
             breathScale: CGFloat(0.92 + (0.28 * breathValue)),
             breathOpacity: 0.66 + (0.34 * breathValue),
             glowOpacity: 0.05 + (0.55 * breathValue),
             geometryRotation: 360 * geometryValue,
-            mandalaRotation: -360 * mandalaValue
+            mandalaRotation: -360 * mandalaValue,
+            pulseRingScale: CGFloat(0.3 + 0.7 * pulsePhase),
+            pulseRingOpacity: max(0, 1.0 - pulsePhase) * 0.6,
+            particleAngle: 360 * repeatingProgress(time: t, duration: particleSpeed),
+            shimmerPhase: oscillatingProgress(time: t, halfDuration: shimmerCycle),
+            innerRotation: -360 * repeatingProgress(time: t, duration: 24 / safeRate),
+            time: t
         )
     }
 
     static func quietAlarm(date: Date, isAnimating: Bool, reduceMotion: Bool, playbackRate: Double, breathCycle: Double) -> SessionGeometryValues {
         guard isAnimating, !reduceMotion else {
-            return SessionGeometryValues(breathScale: 1, breathOpacity: 0.82, glowOpacity: 0.18, geometryRotation: 0, mandalaRotation: 0)
+            return SessionGeometryValues(breathScale: 1, breathOpacity: 0.82, glowOpacity: 0.18, geometryRotation: 0, mandalaRotation: 0, pulseRingScale: 0.4, pulseRingOpacity: 0, particleAngle: 0, shimmerPhase: 0, innerRotation: 0, time: 0)
         }
 
         let safeRate: Double = max(playbackRate, 0.25)
@@ -5785,13 +5800,22 @@ private struct SessionGeometryValues {
         let breathValue: Double = breathProgress(time: t, cycle: breathCycle)
         let geometryValue: Double = oscillatingProgress(time: t, halfDuration: 6 / safeRate)
         let mandalaValue: Double = oscillatingProgress(time: t, halfDuration: 10 / safeRate)
+        let pulseCycle: Double = 4.0 / safeRate
+        let pulsePhase: Double = (t.truncatingRemainder(dividingBy: pulseCycle)) / pulseCycle
+        let shimmerCycle: Double = 3.0 / safeRate
 
         return SessionGeometryValues(
             breathScale: CGFloat(0.92 + (0.28 * breathValue)),
             breathOpacity: 0.66 + (0.34 * breathValue),
             glowOpacity: 0.05 + (0.55 * breathValue),
             geometryRotation: 180 * geometryValue,
-            mandalaRotation: -360 * mandalaValue
+            mandalaRotation: -360 * mandalaValue,
+            pulseRingScale: CGFloat(0.3 + 0.7 * pulsePhase),
+            pulseRingOpacity: max(0, 1.0 - pulsePhase) * 0.5,
+            particleAngle: 360 * repeatingProgress(time: t, duration: 28 / safeRate),
+            shimmerPhase: oscillatingProgress(time: t, halfDuration: shimmerCycle),
+            innerRotation: -360 * repeatingProgress(time: t, duration: 30 / safeRate),
+            time: t
         )
     }
 }
@@ -5801,6 +5825,11 @@ private struct SynchroGeometryValues {
     let ringRotation: Double
     let starRotation: Double
     let centerRadius: CGFloat
+    let pulsePhase: Double
+    let particleAngle: Double
+    let shimmerPhase: Double
+    let innerRingRotation: Double
+    let time: Double
 
     init(date: Date, isAnimating: Bool, reduceMotion: Bool, tempoBPM: Int, playbackRate: Double) {
         guard isAnimating, !reduceMotion else {
@@ -5808,18 +5837,30 @@ private struct SynchroGeometryValues {
             ringRotation = 0
             starRotation = 0
             centerRadius = 12
+            pulsePhase = 0
+            particleAngle = 0
+            shimmerPhase = 0
+            innerRingRotation = 0
+            time = 0
             return
         }
 
         let beatDuration: Double = min(max(60000 / (Double(max(tempoBPM, 1)) * max(playbackRate, 0.25)), 250), 6000) / 1000
-        let time: Double = date.timeIntervalSinceReferenceDate
-        let breatheValue: Double = oscillatingProgress(time: time, halfDuration: beatDuration * 4)
-        let centerValue: Double = oscillatingProgress(time: time + 0.37, halfDuration: beatDuration * 2)
+        let t: Double = date.timeIntervalSinceReferenceDate
+        let breatheValue: Double = oscillatingProgress(time: t, halfDuration: beatDuration * 4)
+        let centerValue: Double = oscillatingProgress(time: t + 0.37, halfDuration: beatDuration * 2)
+        let pulseCycle: Double = beatDuration * 8
+        let pp: Double = (t.truncatingRemainder(dividingBy: pulseCycle)) / pulseCycle
 
         breatheScale = CGFloat(0.97 + (0.07 * breatheValue))
-        ringRotation = 360 * repeatingProgress(time: time, duration: beatDuration * 64)
-        starRotation = -360 * repeatingProgress(time: time, duration: beatDuration * 52)
+        ringRotation = 360 * repeatingProgress(time: t, duration: beatDuration * 64)
+        starRotation = -360 * repeatingProgress(time: t, duration: beatDuration * 52)
         centerRadius = CGFloat(10 + (6 * centerValue))
+        pulsePhase = pp
+        particleAngle = 360 * repeatingProgress(time: t, duration: beatDuration * 16)
+        shimmerPhase = oscillatingProgress(time: t, halfDuration: beatDuration * 6)
+        innerRingRotation = -360 * repeatingProgress(time: t, duration: beatDuration * 40)
+        time = t
     }
 }
 
@@ -5872,6 +5913,18 @@ private func drawSacredGeometry(context: inout GraphicsContext, layout: SessionG
     let seedRect: CGRect = CGRect(x: layout.center.x - layout.side / 2, y: layout.center.y - layout.side / 2, width: layout.side, height: layout.side)
     let mandalaSide: CGFloat = layout.side * 0.885
     let mandalaRect: CGRect = CGRect(x: layout.center.x - mandalaSide / 2, y: layout.center.y - mandalaSide / 2, width: mandalaSide, height: mandalaSide)
+    let scale: CGFloat = layout.side / 520
+
+    drawPulseRing(context: &context, center: layout.center, maxRadius: layout.side * 0.52, scale: values.pulseRingScale, opacity: values.pulseRingOpacity, lineWidth: 1.8 * scale, color: .white)
+    drawPulseRing(context: &context, center: layout.center, maxRadius: layout.side * 0.38, scale: CGFloat(min(1, Double(values.pulseRingScale) + 0.15)), opacity: values.pulseRingOpacity * 0.5, lineWidth: 1.2 * scale, color: .white)
+
+    var outerContext = context
+    outerContext.translateBy(x: layout.center.x, y: layout.center.y)
+    outerContext.scaleBy(x: values.breathScale * 0.88, y: values.breathScale * 0.88)
+    outerContext.rotate(by: .degrees(values.innerRotation))
+    outerContext.translateBy(x: -layout.center.x, y: -layout.center.y)
+    outerContext.opacity = values.breathOpacity * 0.28
+    drawFlowerOfLifeOuter(context: &outerContext, center: layout.center, scale: scale)
 
     var seedContext = context
     seedContext.translateBy(x: layout.center.x, y: layout.center.y)
@@ -5904,10 +5957,32 @@ private func drawSacredGeometry(context: inout GraphicsContext, layout: SessionG
     mandalaGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
     mandalaGlowContext.opacity = values.glowOpacity * 0.88
     drawMandalaRays(context: &mandalaGlowContext, rect: mandalaRect, lineWidthScale: 1.5, opacityScale: 0.9)
+
+    drawOrbitingParticles(context: &context, center: layout.center, radius: 80 * scale, count: 7, angle: values.particleAngle, dotSize: 4 * scale, opacity: values.breathOpacity * 0.7, color: .white)
+    drawOrbitingParticles(context: &context, center: layout.center, radius: 140 * scale, count: 12, angle: -values.particleAngle * 0.6, dotSize: 3 * scale, opacity: values.breathOpacity * 0.45, color: Color(hex: "#FFF7E6"))
+
+    drawShimmerDots(context: &context, center: layout.center, radius: 60 * scale, count: 6, phase: values.shimmerPhase, dotSize: 5 * scale, color: .white)
+    drawShimmerDots(context: &context, center: layout.center, radius: 120 * scale, count: 6, phase: values.shimmerPhase * 0.7 + 0.3, dotSize: 3.5 * scale, color: Color(hex: "#FFF7E6"))
+
+    let centerGlow: CGFloat = 14 * scale * values.breathScale
+    context.fill(Path(ellipseIn: CGRect(x: layout.center.x - centerGlow, y: layout.center.y - centerGlow, width: centerGlow * 2, height: centerGlow * 2)), with: .color(.white.opacity(values.glowOpacity * 0.4)))
+    let innerDot: CGFloat = 5 * scale
+    context.fill(Path(ellipseIn: CGRect(x: layout.center.x - innerDot, y: layout.center.y - innerDot, width: innerDot * 2, height: innerDot * 2)), with: .color(.white.opacity(values.breathOpacity * 0.6)))
 }
 
 private func drawUnwindGeometry(context: inout GraphicsContext, layout: SessionGeometryLayout, values: SessionGeometryValues) {
     let rect: CGRect = CGRect(x: layout.center.x - layout.side / 2, y: layout.center.y - layout.side / 2, width: layout.side, height: layout.side)
+    let scale: CGFloat = layout.side / 520
+
+    drawPulseRing(context: &context, center: layout.center, maxRadius: layout.side * 0.48, scale: values.pulseRingScale, opacity: values.pulseRingOpacity * 0.8, lineWidth: 1.5 * scale, color: Color(hex: "#FFF7E6"))
+
+    var outerSpiralContext = context
+    outerSpiralContext.translateBy(x: layout.center.x, y: layout.center.y)
+    outerSpiralContext.scaleBy(x: values.breathScale * 0.85, y: values.breathScale * 0.85)
+    outerSpiralContext.rotate(by: .degrees(values.innerRotation * 0.7))
+    outerSpiralContext.translateBy(x: -layout.center.x, y: -layout.center.y)
+    outerSpiralContext.opacity = values.breathOpacity * 0.22
+    drawGoldenSpiral(context: &outerSpiralContext, center: layout.center, scale: scale)
 
     var spiralContext = context
     spiralContext.translateBy(x: layout.center.x, y: layout.center.y)
@@ -5948,10 +6023,30 @@ private func drawUnwindGeometry(context: inout GraphicsContext, layout: SessionG
     petalGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
     petalGlowContext.opacity = values.glowOpacity * 0.7
     drawUnwindPetals(context: &petalGlowContext, rect: rect, glow: true)
+
+    drawOrbitingParticles(context: &context, center: layout.center, radius: 100 * scale, count: 8, angle: values.particleAngle, dotSize: 3.5 * scale, opacity: values.breathOpacity * 0.55, color: Color(hex: "#FFF7E6"))
+    drawOrbitingParticles(context: &context, center: layout.center, radius: 55 * scale, count: 5, angle: -values.particleAngle * 0.8, dotSize: 4 * scale, opacity: values.breathOpacity * 0.65, color: .white)
+
+    drawShimmerDots(context: &context, center: layout.center, radius: 80 * scale, count: 8, phase: values.shimmerPhase, dotSize: 4 * scale, color: Color(hex: "#FFECC8"))
+
+    let centerGlow: CGFloat = 16 * scale * values.breathScale
+    context.fill(Path(ellipseIn: CGRect(x: layout.center.x - centerGlow, y: layout.center.y - centerGlow, width: centerGlow * 2, height: centerGlow * 2)), with: .color(Color(hex: "#FFF7E6").opacity(values.glowOpacity * 0.35)))
 }
 
 private func drawQuietAlarmGeometry(context: inout GraphicsContext, layout: SessionGeometryLayout, values: SessionGeometryValues) {
     let rect: CGRect = CGRect(x: layout.center.x - layout.side / 2, y: layout.center.y - layout.side / 2, width: layout.side, height: layout.side)
+    let scale: CGFloat = layout.side / 520
+
+    drawPulseRing(context: &context, center: layout.center, maxRadius: layout.side * 0.46, scale: values.pulseRingScale, opacity: values.pulseRingOpacity * 0.6, lineWidth: 1.4 * scale, color: Color(hex: "#FFE4E1"))
+    drawPulseRing(context: &context, center: layout.center, maxRadius: layout.side * 0.32, scale: CGFloat(min(1, Double(values.pulseRingScale) + 0.2)), opacity: values.pulseRingOpacity * 0.35, lineWidth: 1.0 * scale, color: Color(hex: "#FFDDD6"))
+
+    var lissajousContext = context
+    lissajousContext.translateBy(x: layout.center.x, y: layout.center.y)
+    lissajousContext.scaleBy(x: values.breathScale * 0.9, y: values.breathScale * 0.9)
+    lissajousContext.rotate(by: .degrees(values.innerRotation * 0.5))
+    lissajousContext.translateBy(x: -layout.center.x, y: -layout.center.y)
+    lissajousContext.opacity = values.breathOpacity * 0.2
+    drawLissajousCurve(context: &lissajousContext, center: layout.center, scale: scale, phase: values.shimmerPhase)
 
     var rippleContext = context
     rippleContext.translateBy(x: layout.center.x, y: layout.center.y)
@@ -5992,6 +6087,16 @@ private func drawQuietAlarmGeometry(context: inout GraphicsContext, layout: Sess
     curveGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
     curveGlowContext.opacity = values.glowOpacity * 0.65
     drawQuietBreathCurves(context: &curveGlowContext, rect: rect, glow: true)
+
+    drawOrbitingParticles(context: &context, center: layout.center, radius: 72 * scale, count: 6, angle: values.particleAngle, dotSize: 3.5 * scale, opacity: values.breathOpacity * 0.5, color: Color(hex: "#FFE4E1"))
+    drawOrbitingParticles(context: &context, center: layout.center, radius: 130 * scale, count: 10, angle: -values.particleAngle * 0.55, dotSize: 2.5 * scale, opacity: values.breathOpacity * 0.35, color: Color(hex: "#FFDDD6"))
+
+    drawShimmerDots(context: &context, center: layout.center, radius: 48 * scale, count: 6, phase: values.shimmerPhase, dotSize: 4.5 * scale, color: Color(hex: "#FFE8E0"))
+
+    let centerGlow: CGFloat = 18 * scale * values.breathScale
+    context.fill(Path(ellipseIn: CGRect(x: layout.center.x - centerGlow, y: layout.center.y - centerGlow, width: centerGlow * 2, height: centerGlow * 2)), with: .color(Color(hex: "#FFE4E1").opacity(values.glowOpacity * 0.3)))
+    let innerDot: CGFloat = 5 * scale
+    context.fill(Path(ellipseIn: CGRect(x: layout.center.x - innerDot, y: layout.center.y - innerDot, width: innerDot * 2, height: innerDot * 2)), with: .color(.white.opacity(values.breathOpacity * 0.5)))
 }
 
 private func drawSynchroGeometry(context: inout GraphicsContext, frame: CGRect, values: SynchroGeometryValues) {
@@ -5999,10 +6104,22 @@ private func drawSynchroGeometry(context: inout GraphicsContext, frame: CGRect, 
     let side: CGFloat = frame.width
     let scale: CGFloat = side / 300
 
+    drawPulseRing(context: &context, center: center, maxRadius: side * 0.52, scale: CGFloat(0.3 + 0.7 * values.pulsePhase), opacity: max(0, 1.0 - values.pulsePhase) * 0.45, lineWidth: 1.5 * scale, color: Color(hex: "#FFF7E6"))
+
     var rootContext = context
     rootContext.translateBy(x: center.x, y: center.y)
     rootContext.scaleBy(x: values.breatheScale * scale, y: values.breatheScale * scale)
     rootContext.translateBy(x: -150, y: -150)
+
+    var innerRingsContext = rootContext
+    innerRingsContext.translateBy(x: 150, y: 150)
+    innerRingsContext.rotate(by: .degrees(values.innerRingRotation))
+    innerRingsContext.translateBy(x: -150, y: -150)
+    innerRingsContext.opacity = 0.25
+    for radius in [165.0, 180, 195] {
+        let rect: CGRect = CGRect(x: 150 - radius, y: 150 - radius, width: radius * 2, height: radius * 2)
+        innerRingsContext.stroke(Path(ellipseIn: rect), with: .color(.white.opacity(0.6)), style: StrokeStyle(lineWidth: 0.8, lineCap: .round, dash: [4, 8]))
+    }
 
     var ringsContext = rootContext
     ringsContext.translateBy(x: 150, y: 150)
@@ -6045,6 +6162,39 @@ private func drawSynchroGeometry(context: inout GraphicsContext, frame: CGRect, 
     starContext.stroke(upward, with: .color(Color(hex: "#FFF7E6").opacity(0.9)), style: StrokeStyle(lineWidth: 2, lineJoin: .round))
     starContext.stroke(downward, with: .color(Color(hex: "#FFF7E6").opacity(0.75)), style: StrokeStyle(lineWidth: 2, lineJoin: .round))
 
+    let outerStarScale: CGFloat = 1.35
+    var outerStarContext = rootContext
+    outerStarContext.translateBy(x: 150, y: 150)
+    outerStarContext.rotate(by: .degrees(values.starRotation * 0.6))
+    outerStarContext.scaleBy(x: outerStarScale, y: outerStarScale)
+    outerStarContext.translateBy(x: -150, y: -150)
+    outerStarContext.opacity = 0.2
+    outerStarContext.stroke(upward, with: .color(Color(hex: "#FFF7E6").opacity(0.6)), style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+    outerStarContext.stroke(downward, with: .color(Color(hex: "#FFF7E6").opacity(0.5)), style: StrokeStyle(lineWidth: 1.2, lineJoin: .round))
+
+    for index in 0..<6 {
+        let angle: Double = values.particleAngle * (.pi / 180) + (Double(index) / 6.0) * .pi * 2
+        let orbitR: Double = 130
+        let dotX: CGFloat = 150 + CGFloat(cos(angle)) * CGFloat(orbitR)
+        let dotY: CGFloat = 150 + CGFloat(sin(angle)) * CGFloat(orbitR)
+        let dotSize: CGFloat = 3
+        rootContext.opacity = 0.6 + 0.3 * values.shimmerPhase
+        rootContext.fill(Path(ellipseIn: CGRect(x: dotX - dotSize / 2, y: dotY - dotSize / 2, width: dotSize, height: dotSize)), with: .color(Color(hex: "#FFF7E6")))
+    }
+
+    for index in 0..<8 {
+        let angle: Double = -values.particleAngle * 0.7 * (.pi / 180) + (Double(index) / 8.0) * .pi * 2
+        let orbitR: Double = 80
+        let dotX: CGFloat = 150 + CGFloat(cos(angle)) * CGFloat(orbitR)
+        let dotY: CGFloat = 150 + CGFloat(sin(angle)) * CGFloat(orbitR)
+        let dotSize: CGFloat = 2.5
+        rootContext.opacity = 0.4 + 0.25 * (1 - values.shimmerPhase)
+        rootContext.fill(Path(ellipseIn: CGRect(x: dotX - dotSize / 2, y: dotY - dotSize / 2, width: dotSize, height: dotSize)), with: .color(.white))
+    }
+
+    rootContext.opacity = 1
+    let glowR: CGFloat = values.centerRadius * 2.2
+    rootContext.fill(Path(ellipseIn: CGRect(x: 150 - glowR, y: 150 - glowR, width: glowR * 2, height: glowR * 2)), with: .color(Color(hex: "#FFF7E6").opacity(0.12)))
     rootContext.fill(Path(ellipseIn: CGRect(x: 150 - values.centerRadius, y: 150 - values.centerRadius, width: values.centerRadius * 2, height: values.centerRadius * 2)), with: .color(Color(hex: "#FFF7E6")))
 }
 
@@ -6315,6 +6465,117 @@ private func quadraticArcPath(center: CGPoint, startRadius: CGFloat, endRadius: 
         path.move(to: start)
         path.addQuadCurve(to: end, control: control)
     }
+}
+
+private func drawPulseRing(context: inout GraphicsContext, center: CGPoint, maxRadius: CGFloat, scale: CGFloat, opacity: Double, lineWidth: CGFloat, color: Color) {
+    guard opacity > 0.01 else { return }
+    let radius: CGFloat = maxRadius * scale
+    let rect: CGRect = CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2)
+    context.stroke(Path(ellipseIn: rect), with: .color(color.opacity(opacity)), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+}
+
+private func drawOrbitingParticles(context: inout GraphicsContext, center: CGPoint, radius: CGFloat, count: Int, angle: Double, dotSize: CGFloat, opacity: Double, color: Color) {
+    guard opacity > 0.01 else { return }
+    let angleRad: Double = angle * (.pi / 180)
+    for index in 0..<count {
+        let baseAngle: Double = angleRad + (Double(index) / Double(count)) * .pi * 2
+        let wobble: Double = sin(baseAngle * 3 + angle * 0.02) * Double(radius) * 0.06
+        let r: Double = Double(radius) + wobble
+        let x: CGFloat = center.x + CGFloat(cos(baseAngle)) * CGFloat(r)
+        let y: CGFloat = center.y + CGFloat(sin(baseAngle)) * CGFloat(r)
+        let phaseOpacity: Double = 0.5 + 0.5 * sin(baseAngle * 2 + angle * 0.03)
+        let half: CGFloat = dotSize / 2
+        context.fill(Path(ellipseIn: CGRect(x: x - half, y: y - half, width: dotSize, height: dotSize)), with: .color(color.opacity(opacity * phaseOpacity)))
+    }
+}
+
+private func drawShimmerDots(context: inout GraphicsContext, center: CGPoint, radius: CGFloat, count: Int, phase: Double, dotSize: CGFloat, color: Color) {
+    for index in 0..<count {
+        let baseAngle: Double = (Double(index) / Double(count)) * .pi * 2
+        let x: CGFloat = center.x + CGFloat(cos(baseAngle)) * radius
+        let y: CGFloat = center.y + CGFloat(sin(baseAngle)) * radius
+        let shimmer: Double = max(0, sin(phase * .pi * 2 + baseAngle * 1.5))
+        let currentSize: CGFloat = dotSize * CGFloat(0.4 + 0.6 * shimmer)
+        let half: CGFloat = currentSize / 2
+        context.fill(Path(ellipseIn: CGRect(x: x - half, y: y - half, width: currentSize, height: currentSize)), with: .color(color.opacity(0.3 + 0.7 * shimmer)))
+    }
+}
+
+private func drawFlowerOfLifeOuter(context: inout GraphicsContext, center: CGPoint, scale: CGFloat) {
+    let baseRadius: CGFloat = 60 * scale
+    let ringRadius: CGFloat = 120 * scale
+    for index in 0..<6 {
+        let angle: Double = (Double(index) / 6) * .pi * 2
+        let cx: CGFloat = center.x + CGFloat(cos(angle)) * ringRadius
+        let cy: CGFloat = center.y + CGFloat(sin(angle)) * ringRadius
+        let rect: CGRect = CGRect(x: cx - baseRadius, y: cy - baseRadius, width: baseRadius * 2, height: baseRadius * 2)
+        context.stroke(Path(ellipseIn: rect), with: .color(.white.opacity(0.55)), style: StrokeStyle(lineWidth: 1.0 * scale))
+    }
+    for index in 0..<6 {
+        let angle: Double = (Double(index) / 6) * .pi * 2 + .pi / 6
+        let cx: CGFloat = center.x + CGFloat(cos(angle)) * ringRadius * 1.6
+        let cy: CGFloat = center.y + CGFloat(sin(angle)) * ringRadius * 1.6
+        let rect: CGRect = CGRect(x: cx - baseRadius * 0.8, y: cy - baseRadius * 0.8, width: baseRadius * 1.6, height: baseRadius * 1.6)
+        context.stroke(Path(ellipseIn: rect), with: .color(.white.opacity(0.3)), style: StrokeStyle(lineWidth: 0.8 * scale, dash: [6 * scale, 4 * scale]))
+    }
+}
+
+private func drawGoldenSpiral(context: inout GraphicsContext, center: CGPoint, scale: CGFloat) {
+    let phi: Double = 1.618033988749895
+    let path = Path { path in
+        let steps: Int = 200
+        for step in 0...steps {
+            let progress: Double = Double(step) / Double(steps)
+            let angle: Double = progress * 4 * .pi
+            let r: Double = 5 * pow(phi, angle / (.pi * 2)) * Double(scale)
+            let x: CGFloat = center.x + CGFloat(cos(angle) * r)
+            let y: CGFloat = center.y + CGFloat(sin(angle) * r)
+            guard x.isFinite, y.isFinite else { continue }
+            if step == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
+        }
+    }
+    context.stroke(path, with: .color(Color(hex: "#FFF7E6").opacity(0.7)), style: StrokeStyle(lineWidth: 1.4 * scale, lineCap: .round))
+
+    let mirrorPath = Path { path in
+        let steps: Int = 200
+        for step in 0...steps {
+            let progress: Double = Double(step) / Double(steps)
+            let angle: Double = progress * 4 * .pi
+            let r: Double = 5 * pow(phi, angle / (.pi * 2)) * Double(scale)
+            let x: CGFloat = center.x - CGFloat(cos(angle) * r)
+            let y: CGFloat = center.y - CGFloat(sin(angle) * r)
+            guard x.isFinite, y.isFinite else { continue }
+            if step == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
+        }
+    }
+    context.stroke(mirrorPath, with: .color(Color(hex: "#FFF7E6").opacity(0.5)), style: StrokeStyle(lineWidth: 1.0 * scale, lineCap: .round))
+}
+
+private func drawLissajousCurve(context: inout GraphicsContext, center: CGPoint, scale: CGFloat, phase: Double) {
+    let amplitude: CGFloat = 120 * scale
+    let path = Path { path in
+        let steps: Int = 200
+        for step in 0...steps {
+            let t: Double = (Double(step) / Double(steps)) * .pi * 2
+            let x: CGFloat = center.x + amplitude * CGFloat(sin(3 * t + phase * .pi))
+            let y: CGFloat = center.y + amplitude * CGFloat(sin(2 * t))
+            guard x.isFinite, y.isFinite else { continue }
+            if step == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
+        }
+    }
+    context.stroke(path, with: .color(Color(hex: "#FFD0C5").opacity(0.7)), style: StrokeStyle(lineWidth: 1.2 * scale, lineCap: .round))
+
+    let path2 = Path { path in
+        let steps: Int = 200
+        for step in 0...steps {
+            let t: Double = (Double(step) / Double(steps)) * .pi * 2
+            let x: CGFloat = center.x + amplitude * 0.7 * CGFloat(sin(5 * t + phase * .pi * 0.7))
+            let y: CGFloat = center.y + amplitude * 0.7 * CGFloat(sin(4 * t))
+            guard x.isFinite, y.isFinite else { continue }
+            if step == 0 { path.move(to: CGPoint(x: x, y: y)) } else { path.addLine(to: CGPoint(x: x, y: y)) }
+        }
+    }
+    context.stroke(path2, with: .color(Color(hex: "#FFDDD6").opacity(0.5)), style: StrokeStyle(lineWidth: 0.9 * scale, lineCap: .round))
 }
 
 struct EmotionIconView: View {
