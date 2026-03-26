@@ -5878,7 +5878,7 @@ private func drawSacredGeometry(context: inout GraphicsContext, layout: SessionG
     seedContext.scaleBy(x: values.breathScale, y: values.breathScale)
     seedContext.rotate(by: .degrees(values.geometryRotation))
     seedContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    seedContext.opacity = values.breathOpacity * 0.42
+    seedContext.opacity = values.breathOpacity * 0.72
     drawSeedOfLife(context: &seedContext, rect: seedRect, lineWidthScale: 1, opacityScale: 1)
 
     var seedGlowContext = context
@@ -5886,7 +5886,7 @@ private func drawSacredGeometry(context: inout GraphicsContext, layout: SessionG
     seedGlowContext.scaleBy(x: values.breathScale * 1.07, y: values.breathScale * 1.07)
     seedGlowContext.rotate(by: .degrees(values.geometryRotation))
     seedGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    seedGlowContext.opacity = values.glowOpacity * 0.72
+    seedGlowContext.opacity = values.glowOpacity * 1.0
     drawSeedOfLife(context: &seedGlowContext, rect: seedRect, lineWidthScale: 1.35, opacityScale: 0.92)
 
     var mandalaContext = context
@@ -5894,7 +5894,7 @@ private func drawSacredGeometry(context: inout GraphicsContext, layout: SessionG
     mandalaContext.scaleBy(x: values.breathScale, y: values.breathScale)
     mandalaContext.rotate(by: .degrees(values.mandalaRotation))
     mandalaContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    mandalaContext.opacity = values.breathOpacity * 0.26
+    mandalaContext.opacity = values.breathOpacity * 0.52
     drawMandalaRays(context: &mandalaContext, rect: mandalaRect, lineWidthScale: 1, opacityScale: 1)
 
     var mandalaGlowContext = context
@@ -5902,7 +5902,7 @@ private func drawSacredGeometry(context: inout GraphicsContext, layout: SessionG
     mandalaGlowContext.scaleBy(x: values.breathScale * 1.07, y: values.breathScale * 1.07)
     mandalaGlowContext.rotate(by: .degrees(values.mandalaRotation))
     mandalaGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    mandalaGlowContext.opacity = values.glowOpacity * 0.62 * 1.18
+    mandalaGlowContext.opacity = values.glowOpacity * 0.88
     drawMandalaRays(context: &mandalaGlowContext, rect: mandalaRect, lineWidthScale: 1.5, opacityScale: 0.9)
 }
 
@@ -5914,7 +5914,7 @@ private func drawUnwindGeometry(context: inout GraphicsContext, layout: SessionG
     spiralContext.scaleBy(x: values.breathScale, y: values.breathScale)
     spiralContext.rotate(by: .degrees(values.geometryRotation))
     spiralContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    spiralContext.opacity = values.breathOpacity * 0.35
+    spiralContext.opacity = values.breathOpacity * 0.62
     drawUnwindSpiralField(context: &spiralContext, rect: rect, glow: false)
 
     var spiralGlowContext = context
@@ -5922,7 +5922,7 @@ private func drawUnwindGeometry(context: inout GraphicsContext, layout: SessionG
     spiralGlowContext.scaleBy(x: values.breathScale * 1.05, y: values.breathScale * 1.05)
     spiralGlowContext.rotate(by: .degrees(values.geometryRotation))
     spiralGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    spiralGlowContext.opacity = values.glowOpacity * 0.5
+    spiralGlowContext.opacity = values.glowOpacity * 0.8
     drawUnwindSpiralField(context: &spiralGlowContext, rect: rect, glow: true)
 
     var petalContext = context
@@ -5930,7 +5930,7 @@ private func drawUnwindGeometry(context: inout GraphicsContext, layout: SessionG
     petalContext.scaleBy(x: values.breathScale, y: values.breathScale)
     petalContext.rotate(by: .degrees(values.mandalaRotation))
     petalContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    petalContext.opacity = values.breathOpacity * 0.3
+    petalContext.opacity = values.breathOpacity * 0.55
     drawUnwindPetals(context: &petalContext, rect: rect, glow: false)
 
     var waveContext = context
@@ -5938,7 +5938,7 @@ private func drawUnwindGeometry(context: inout GraphicsContext, layout: SessionG
     waveContext.scaleBy(x: values.breathScale * 0.95, y: values.breathScale * 0.95)
     waveContext.rotate(by: .degrees(values.geometryRotation * 0.5))
     waveContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    waveContext.opacity = values.breathOpacity * 0.2
+    waveContext.opacity = values.breathOpacity * 0.42
     drawUnwindWaves(context: &waveContext, rect: rect)
 
     var petalGlowContext = context
@@ -5946,7 +5946,7 @@ private func drawUnwindGeometry(context: inout GraphicsContext, layout: SessionG
     petalGlowContext.scaleBy(x: values.breathScale * 1.08, y: values.breathScale * 1.08)
     petalGlowContext.rotate(by: .degrees(values.mandalaRotation))
     petalGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    petalGlowContext.opacity = values.glowOpacity * 0.4
+    petalGlowContext.opacity = values.glowOpacity * 0.7
     drawUnwindPetals(context: &petalGlowContext, rect: rect, glow: true)
 }
 
@@ -5958,7 +5958,7 @@ private func drawQuietAlarmGeometry(context: inout GraphicsContext, layout: Sess
     rippleContext.scaleBy(x: values.breathScale, y: values.breathScale)
     rippleContext.rotate(by: .degrees(values.geometryRotation))
     rippleContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    rippleContext.opacity = values.breathOpacity * 0.3
+    rippleContext.opacity = values.breathOpacity * 0.58
     drawQuietRipples(context: &rippleContext, rect: rect, glow: false)
 
     var rippleGlowContext = context
@@ -5966,7 +5966,7 @@ private func drawQuietAlarmGeometry(context: inout GraphicsContext, layout: Sess
     rippleGlowContext.scaleBy(x: values.breathScale * 1.06, y: values.breathScale * 1.06)
     rippleGlowContext.rotate(by: .degrees(values.geometryRotation))
     rippleGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    rippleGlowContext.opacity = values.glowOpacity * 0.45
+    rippleGlowContext.opacity = values.glowOpacity * 0.75
     drawQuietRipples(context: &rippleGlowContext, rect: rect, glow: true)
 
     var vesicaContext = context
@@ -5974,7 +5974,7 @@ private func drawQuietAlarmGeometry(context: inout GraphicsContext, layout: Sess
     vesicaContext.scaleBy(x: values.breathScale, y: values.breathScale)
     vesicaContext.rotate(by: .degrees(values.mandalaRotation))
     vesicaContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    vesicaContext.opacity = values.breathOpacity * 0.28
+    vesicaContext.opacity = values.breathOpacity * 0.55
     drawQuietVesica(context: &vesicaContext, rect: rect)
 
     var curveContext = context
@@ -5982,7 +5982,7 @@ private func drawQuietAlarmGeometry(context: inout GraphicsContext, layout: Sess
     curveContext.scaleBy(x: values.breathScale * 0.92, y: values.breathScale * 0.92)
     curveContext.rotate(by: .degrees(-values.geometryRotation * 0.6667))
     curveContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    curveContext.opacity = values.breathOpacity * 0.32
+    curveContext.opacity = values.breathOpacity * 0.58
     drawQuietBreathCurves(context: &curveContext, rect: rect, glow: false)
 
     var curveGlowContext = context
@@ -5990,7 +5990,7 @@ private func drawQuietAlarmGeometry(context: inout GraphicsContext, layout: Sess
     curveGlowContext.scaleBy(x: values.breathScale * 1.04, y: values.breathScale * 1.04)
     curveGlowContext.rotate(by: .degrees(values.mandalaRotation * 0.5))
     curveGlowContext.translateBy(x: -layout.center.x, y: -layout.center.y)
-    curveGlowContext.opacity = values.glowOpacity * 0.35
+    curveGlowContext.opacity = values.glowOpacity * 0.65
     drawQuietBreathCurves(context: &curveGlowContext, rect: rect, glow: true)
 }
 
@@ -6008,22 +6008,22 @@ private func drawSynchroGeometry(context: inout GraphicsContext, frame: CGRect, 
     ringsContext.translateBy(x: 150, y: 150)
     ringsContext.rotate(by: .degrees(values.ringRotation))
     ringsContext.translateBy(x: -150, y: -150)
-    ringsContext.opacity = 0.8
+    ringsContext.opacity = 0.92
     for (index, radius) in [40.0, 58, 76, 94, 112, 130, 148].enumerated() {
         let lineWidth: CGFloat = CGFloat(1.5 + (Double(index) * 0.3))
         let rect: CGRect = CGRect(x: 150 - radius, y: 150 - radius, width: radius * 2, height: radius * 2)
         let style = index.isMultiple(of: 3)
             ? StrokeStyle(lineWidth: lineWidth, lineCap: .round, dash: [10, 6])
             : StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-        ringsContext.stroke(Path(ellipseIn: rect), with: .color(.white.opacity(0.8)), style: style)
+        ringsContext.stroke(Path(ellipseIn: rect), with: .color(.white.opacity(0.9)), style: style)
     }
 
-    rootContext.opacity = 0.25
+    rootContext.opacity = 0.45
     for index in 0..<12 {
         let angle: Double = (Double(index) / 12) * .pi * 2
         let circleCenter: CGPoint = CGPoint(x: 150 + CGFloat(cos(angle) * 60), y: 150 + CGFloat(sin(angle) * 60))
         let circleRect: CGRect = CGRect(x: circleCenter.x - 60, y: circleCenter.y - 60, width: 120, height: 120)
-        rootContext.stroke(Path(ellipseIn: circleRect), with: .color(.white.opacity(0.25)), style: StrokeStyle(lineWidth: 1.2))
+        rootContext.stroke(Path(ellipseIn: circleRect), with: .color(.white.opacity(0.45)), style: StrokeStyle(lineWidth: 1.2))
     }
 
     var starContext = rootContext
